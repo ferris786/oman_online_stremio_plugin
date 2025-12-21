@@ -31,7 +31,7 @@ async function getSeries() {
             const title = $(el).text().trim();
             const href = $(el).attr("href");
 
-            if (title && href && href !== "#") {
+            if (title && href && href !== "#" && title !== "Home" && title !== "Contact Us") {
                 // Create a stable ID from the URL slug
                 const id = "osmanonline:" + href.split("/").filter(Boolean).pop();
 
