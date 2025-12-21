@@ -6,6 +6,13 @@ const BASE_URL = "https://osmanonline.info";
 // Cache for catalog results to improve performance
 let seriesCache = null;
 
+const POSTER_MAP = {
+    "Kurulus Osman": "https://image.tmdb.org/t/p/w500/tu4BWsGFHcYDWulZwHxylA91vo0.jpg",
+    "Kudus Fatihi Selahaddin Eyyubi": "https://image.tmdb.org/t/p/w500/5bljg22nvfS0eP320L5GFYJz3Zb.jpg",
+    "Mehmed Fetihler Sultani": "https://image.tmdb.org/t/p/w500/A8fHgHmcEQU1UcOcXhW3NXtwwcZ.jpg",
+    "Kurulus Orhan": "https://image.tmdb.org/t/p/w500/1kEgzEvhJmw5eSxuGwn0o1cgHlK.jpg"
+};
+
 async function getSeries() {
     if (seriesCache) return seriesCache;
 
@@ -20,12 +27,11 @@ async function getSeries() {
 
         console.log("Page title:", $("title").text());
         console.log("Nav length:", $("#main-nav").length);
-        console.log("Nav HTML:", $("#main-nav").html().substring(0, 500)); // Log first 500 chars
 
         const series = [];
 
         // Try a more lenient selector
-        const items = $("#main-nav li a"); // Removed (> ul >) to be safer
+        const items = $("#main-nav li a");
 
         items.each((i, el) => {
             const title = $(el).text().trim();
@@ -35,13 +41,16 @@ async function getSeries() {
                 // Create a stable ID from the URL slug
                 const id = "osmanonline:" + href.split("/").filter(Boolean).pop();
 
+                // Hardcoded posters
+                let poster = POSTER_MAP[title] || null;
+
                 series.push({
                     id: id,
                     type: "series",
                     name: title,
-                    poster: null, // Scrape poster if available, or leave blank
+                    poster: poster,
                     description: `Watch ${title} on OsmanOnline`,
-                    url: href // Store scraper URL for later use
+                    url: href
                 });
             }
         });
