@@ -1,0 +1,1 @@
+http://127.0.0.1:7000/proxy?url=https%3A%2F%2Fturktvuk.com%2Fcdn%2Fhls%2Fe766f7c2037295b75a65e23c605b1e81%2Fmaster.txt%3Fmd5%3D52poPRTCOT0OjuqlhNTCiA%26expires%3D1766360697&cookie=fireplayer_player%3D757j2astt8bv4ju7c9hmgcchm6&.m3u8

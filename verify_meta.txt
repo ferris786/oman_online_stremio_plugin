@@ -1,0 +1,72 @@
+--- Testing Catalog (Series) ---
+Fetching series from: https://osmanonline.info
+Page title: Home - OsmanOnline.co.uk
+Nav length: 1
+Nav HTML: 
+		<div class="container">
+
+			<div class="main-menu-wrapper">
+
+				
+				<div id="menu-components-wrap">
+
+					
+					<div class="main-menu main-menu-wrap">
+						<div id="main-nav-menu" class="main-menu header-menu"><ul id="menu-main2" class="menu"><li id="menu-item-9432" class="menu-item menu-item-type-custom menu-item-object-custom menu-item-9432"><a href="https://www.osmanonline.co.uk">Home</a></li>
+<li id="menu-item-11231" class="menu-item menu-item-type-custom menu-item-object-custom menu-i
+Found 6 series.
+First series: {
+  id: 'osmanonline:www.osmanonline.co.uk',
+  type: 'series',
+  name: 'Home',
+  poster: null,
+  description: 'Watch Home on OsmanOnline',
+  url: 'https://www.osmanonline.co.uk'
+}
+
+--- Testing Meta (Episodes) ---
+Testing with series: Kurulus Osman (osmanonline:watch-kurulus-osman-with-english-subtitles)
+Fetching series page: https://osmanonline.info/watch-kurulus-osman-with-english-subtitles/
+Episodes found: 196
+Fetching scripts.php...
+Dumped scripts.php to scripts_dump.js
+Found 196 episodes.
+First 3 episodes: [
+  {
+    "id": "osmanonline:watch-kurulus-osman-with-english-subtitles:watch-kurulus-osman-season-1-episode-1-with-english-subtitles",
+    "title": "Season 1 Episode 1 Bolum 1",
+    "released": "2025-12-21T21:44:28.262Z",
+    "season": 1,
+    "episode": 1,
+    "url": "https://osmanonline.info/watch-kurulus-osman-season-1-episode-1-with-english-subtitles/"
+  },
+  {
+    "id": "osmanonline:watch-kurulus-osman-with-english-subtitles:kurulus-osman-season-1-episode-2-with-english-subtitles",
+    "title": "Season 1 Episode 2 Bolum 2",
+    "released": "2025-12-21T21:44:28.263Z",
+    "season": 1,
+    "episode": 2,
+    "url": "https://osmanonline.info/kurulus-osman-season-1-episode-2-with-english-subtitles//"
+  },
+  {
+    "id": "osmanonline:watch-kurulus-osman-with-english-subtitles:kurulus-osman-season-1-episode-3-with-english-subtitles",
+    "title": "Season 1 Episode 3 Bolum 3",
+    "released": "2025-12-21T21:44:28.263Z",
+    "season": 1,
+    "episode": 3,
+    "url": "https://osmanonline.info/kurulus-osman-season-1-episode-3-with-english-subtitles/"
+  }
+]
+
+--- Testing Stream (Video URL) ---
+Fetching stream for: osmanonline:watch-kurulus-osman-with-english-subtitles:watch-kurulus-osman-season-1-episode-1-with-english-subtitles
+Fetching episode page: https://osmanonline.info/watch-kurulus-osman-season-1-episode-1-with-english-subtitles
+Found iframe: https://turktvuk.com/player/index.php?data=96b9bff013acedfb1d140579e2fbeb63
+Captured Cookies: fireplayer_player=jqqqtm8akpjrqacl1lqokp4vup
+Hash: 96b9bff013acedfb1d140579e2fbeb63, CK: \\N\\W\\E\\z\\Y\\z\\Q\\1\\Z\\m\\J\\m\\Z\\W\\N\\l\\N\\T\\R\\j\\M\\2\\N\\i\\M\\D\\Y\\3\\M\\z\\F\\k\\M\\z\\c\\5\\Y\\T\\g\\x\\Y\\j\\M\\=
+Calling API: https://turktvuk.com/player/index.php?data=96b9bff013acedfb1d140579e2fbeb63&do=getVideo
+Forced extension to .txt (bypass 403): https://turktvuk.com/cdn/hls/e766f7c2037295b75a65e23c605b1e81/master.txt?md5=PwQpP3wDoDIhXkTKDiKNeA&expires=1766360671
+Proxy URL: http://127.0.0.1:7000/proxy?url=https%3A%2F%2Fturktvuk.com%2Fcdn%2Fhls%2Fe766f7c2037295b75a65e23c605b1e81%2Fmaster.txt%3Fmd5%3DPwQpP3wDoDIhXkTKDiKNeA%26expires%3D1766360671&cookie=fireplayer_player%3Djqqqtm8akpjrqacl1lqokp4vup&.m3u8
+PROXY_URL=http://127.0.0.1:7000/proxy?url=https%3A%2F%2Fturktvuk.com%2Fcdn%2Fhls%2Fe766f7c2037295b75a65e23c605b1e81%2Fmaster.txt%3Fmd5%3DPwQpP3wDoDIhXkTKDiKNeA%26expires%3D1766360671&cookie=fireplayer_player%3Djqqqtm8akpjrqacl1lqokp4vup&.m3u8
+Proxy Status: 200
+Dumped proxy content to proxy_dump.m3u8

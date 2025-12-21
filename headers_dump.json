@@ -1,0 +1,15 @@
+{
+  "server": "nginx",
+  "date": "Sun, 21 Dec 2025 21:09:17 GMT",
+  "content-type": "text/html; charset=utf-8",
+  "transfer-encoding": "chunked",
+  "connection": "keep-alive",
+  "x-powered-by": "Fire HLS Player, firevideoplayer.com, Fire HLS Player, firevideoplayer.com",
+  "set-cookie": [
+    "fireplayer_player=gcsktetu39bn61s7kfa51b5mpm; path=/; SameSite=None; Secure"
+  ],
+  "x-robots-tag": "noindex,nofollow,noarchive,nosnippet,noydir,noodp",
+  "expires": "Sun, 01 Jan 2014 00:00:00 GMT",
+  "cache-control": "no-store, no-cache, must-revalidate, max-age=0, post-check=0, pre-check=0",
+  "pragma": "no-cache"
+}

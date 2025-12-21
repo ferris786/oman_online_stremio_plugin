@@ -1,0 +1,54 @@
+--- Testing Catalog (Series) ---
+Fetching series from: https://osmanonline.info
+Page title: Home - OsmanOnline.co.uk
+Nav length: 1
+Nav HTML: 
+		<div class="container">
+
+			<div class="main-menu-wrapper">
+
+				
+				<div id="menu-components-wrap">
+
+					
+					<div class="main-menu main-menu-wrap">
+						<div id="main-nav-menu" class="main-menu header-menu"><ul id="menu-main2" class="menu"><li id="menu-item-9432" class="menu-item menu-item-type-custom menu-item-object-custom menu-item-9432"><a href="https://www.osmanonline.co.uk">Home</a></li>
+<li id="menu-item-11231" class="menu-item menu-item-type-custom menu-item-object-custom menu-i
+Found 6 series.
+First series: {
+  id: 'osmanonline:www.osmanonline.co.uk',
+  type: 'series',
+  name: 'Home',
+  poster: null,
+  description: 'Watch Home on OsmanOnline',
+  url: 'https://www.osmanonline.co.uk'
+}
+
+--- Testing Meta (Episodes) ---
+Testing with series: Kurulus Osman (osmanonline:watch-kurulus-osman-with-english-subtitles)
+Fetching series page: https://osmanonline.info/watch-kurulus-osman-with-english-subtitles/
+Episodes found: 196
+Found 196 episodes.
+First episode: {
+  id: 'osmanonline:watch-kurulus-osman-with-english-subtitles:watch-kurulus-osman-season-1-episode-1-with-english-subtitles',
+  title: 'Season 1 Episode 1 Bolum 1',
+  released: '2025-12-21T20:43:07.285Z',
+  season: 1,
+  episode: 1,
+  url: 'https://osmanonline.info/watch-kurulus-osman-season-1-episode-1-with-english-subtitles/'
+}
+
+--- Testing Stream (Video URL) ---
+Fetching stream for: osmanonline:watch-kurulus-osman-with-english-subtitles:watch-kurulus-osman-season-1-episode-1-with-english-subtitles
+Fetching episode page: https://osmanonline.info/watch-kurulus-osman-season-1-episode-1-with-english-subtitles/
+Found iframe: https://turktvuk.com/player/index.php?data=96b9bff013acedfb1d140579e2fbeb63
+Turktvuk fetched. Final URL: https://turktvuk.com/player/index.php?data=96b9bff013acedfb1d140579e2fbeb63
+Body snippet: <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml" dir="ltr" lang="en"><head><script type="text/javascript">document.addEventListener('contextmenu', event => event.preventDefault());</script><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/><meta http-equiv="content-language" content="en"/><title>OsmanOnline</title><meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"><meta name="referrer" content="no-referrer" /><script type="text/javascript">var defaultAudio = ["tur","eng","und"];
+var defaultCaptions = {"eng":"tur","tur":""};
+var player_base_url = "https://turktvuk.com";
+var player_loaded = false;
+var player_language = "en";</script><script type="text/javascript" src="//code.jquery.com/jquery-1.12.4.min.js"></script><script src="https://cdn.jsdelivr.net/npm/countup"></script><script type="text/javascript" src="https://tur
+Could not extract video ID
+Stream result: {
+  "streams": []
+}
