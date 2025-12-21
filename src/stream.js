@@ -149,7 +149,8 @@ async function getStream(type, id) {
                 console.log("Forced extension to .txt (bypass 403):", finalStreamUrl);
             }
 
-            const proxyHost = "http://127.0.0.1:" + (process.env.PORT || 7000);
+            // Use public URL on Render, localhost for local dev
+            const proxyHost = process.env.RENDER_EXTERNAL_URL || `http://127.0.0.1:${process.env.PORT || 7000}`;
             const proxyUrl = `${proxyHost}/proxy?url=${encodeURIComponent(finalStreamUrl)}&cookie=${encodeURIComponent(cookieHeader || "")}&.m3u8`;
             console.log("Proxy URL:", proxyUrl);
 
@@ -175,7 +176,8 @@ async function getStream(type, id) {
             let finalStreamUrl = decryptedUrl;
 
             // Construct Proxy URL
-            const proxyHost = "http://127.0.0.1:" + (process.env.PORT || 7000);
+            // Use public URL on Render, localhost for local dev
+            const proxyHost = process.env.RENDER_EXTERNAL_URL || `http://127.0.0.1:${process.env.PORT || 7000}`;
             const proxyUrl = `${proxyHost}/proxy?url=${encodeURIComponent(finalStreamUrl)}&cookie=${encodeURIComponent(cookieHeader || "")}&.m3u8`;
             console.log("Proxy URL (Fallback):", proxyUrl);
 
