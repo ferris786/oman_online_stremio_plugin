@@ -43,7 +43,7 @@ app.get("/proxy", async (req, res) => {
 
     try {
         console.log(`Proxying: ${targetUrl}`);
-        console.log(`Proxy Cookie: ${cookie}`);
+        // console.log(`Proxy Cookie: ${cookie}`);
 
         const response = await axios.get(targetUrl, {
             headers: {
@@ -53,67 +53,79 @@ app.get("/proxy", async (req, res) => {
                 "Accept": "*/*",
                 "Accept-Encoding": "identity"
             },
-            responseType: "arraybuffer", // Get raw buffer
+            responseType: "stream", // STREAMING: Important for low memory usage
             validateStatus: (status) => status < 400
         });
 
         const contentType = response.headers["content-type"];
         res.setHeader("Content-Type", contentType);
 
-        // Forward some headers?
-        // res.setHeader("Access-Control-Allow-Origin", "*"); // handled by cors
-
         // Check if playlist to rewrite
         // .txt or .m3u8 or application/vnd.apple.mpegurl
         const isPlaylist = targetUrl.includes(".txt") || targetUrl.includes(".m3u8") ||
             (contentType && contentType.includes("mpegurl"));
 
+        // If it's a playlist, we MUST buffer it to rewrite the URLs inside
         if (isPlaylist) {
-            let content = response.data.toString("utf-8");
+            // Collect stream data into a buffer
+            const chunks = [];
+            response.data.on("data", (chunk) => chunks.push(chunk));
 
-            // Force HLS content type for Stremio to ensure it recognizes the playlist
-            res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
+            response.data.on("end", () => {
+                const buffer = Buffer.concat(chunks);
+                let content = buffer.toString("utf-8");
 
-            // Rewrite URLs
-            // 1. Absolute URLs (http...) -> /proxy?url=...
-            // 2. Relative URLs (/...) -> /proxy?url=absolute...
-            // 3. Simple filenames -> /proxy?url=base+filename...
+                // Force HLS content type for Stremio to ensure it recognizes the playlist
+                res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
 
-            const baseUrl = targetUrl.substring(0, targetUrl.lastIndexOf("/") + 1);
-            const hostUrl = new URL(targetUrl).origin;
+                // Rewrite URLs
+                const baseUrl = targetUrl.substring(0, targetUrl.lastIndexOf("/") + 1);
+                const hostUrl = new URL(targetUrl).origin;
 
-            const rewritten = content.replace(/^(?!#)(.+)$/gm, (line) => {
-                line = line.trim();
-                if (!line) return "";
+                const rewritten = content.replace(/^(?!#)(.+)$/gm, (line) => {
+                    line = line.trim();
+                    if (!line) return "";
 
-                let absoluteLine = line;
-                if (line.startsWith("http")) {
-                    absoluteLine = line;
-                } else if (line.startsWith("/")) {
-                    absoluteLine = hostUrl + line;
-                } else {
-                    absoluteLine = baseUrl + line;
-                }
+                    let absoluteLine = line;
+                    if (line.startsWith("http")) {
+                        absoluteLine = line;
+                    } else if (line.startsWith("/")) {
+                        absoluteLine = hostUrl + line;
+                    } else {
+                        absoluteLine = baseUrl + line;
+                    }
 
-                // Encode for proxy
-                // Assuming we are running on same host, headers.host gives us current host
-                // Actually we just need path relative to current server
-                const proxyPath = `/proxy?url=${encodeURIComponent(absoluteLine)}&cookie=${encodeURIComponent(cookie || "")}`;
-                return proxyPath;
+                    const proxyPath = `/proxy?url=${encodeURIComponent(absoluteLine)}&cookie=${encodeURIComponent(cookie || "")}`;
+                    return proxyPath;
+                });
+
+                res.send(rewritten);
             });
 
-            res.send(rewritten);
+            response.data.on("error", (err) => {
+                console.error("Stream error (playlist):", err);
+                if (!res.headersSent) res.status(500).send("Stream error");
+            });
+
         } else {
-            // Segment, just pipe
-            res.send(response.data);
+            // It's a media segment (TS, MP4, Key, etc.)
+            // Just pipe it! This uses minimal RAM.
+            response.data.pipe(res);
+
+            response.data.on("error", (err) => {
+                console.error("Stream error (pipe):", err);
+                // Cannot send error status if headers usually already sent by pipe, but good to log
+            });
         }
 
     } catch (e) {
         console.error("Proxy error:", e.message);
         if (e.response) {
-            res.status(e.response.status).send(e.message);
+            // Since we used responseType: stream, e.response.data is a stream. 
+            // We might want to read it to see the error message if needed, but usually status is enough.
+            if (!res.headersSent) res.sendStatus(e.response.status);
         } else {
-            res.status(500).send(e.message);
+            if (!res.headersSent) res.status(500).send(e.message);
         }
     }
 });

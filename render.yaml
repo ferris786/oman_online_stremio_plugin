@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: oman-online-stremio-plugin
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_VERSION
+        value: 20.11.0 # Use a recent stable Node version
