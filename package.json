@@ -1,6 +1,6 @@
 {
   "name": "oman_online_stremio_plugin",
-  "version": "1.0.0",
+  "version": "1.0.7",
   "main": "index.js",
   "scripts": {
     "start": "node src/index.js",

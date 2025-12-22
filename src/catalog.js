@@ -22,7 +22,7 @@ const TMDB_METADATA = {
         overview: "The life of Mehmed the Conqueror, the Ottoman Sultan who conquered Constantinople at the age of 21."
     },
     "Kurulus Orhan": {
-        poster: "https://image.tmdb.org/t/p/w500/1kEgzEvhJmw5eSxuGwn0o1cgHlK.jpg",
+        poster: "https://i.ibb.co/Gv4Ckgz2/kurulus-easter-egg.jpg",
         overview: "The story of Orhan Ghazi, the son of Osman I and the second Sultan of the Ottoman Empire."
     },
 
