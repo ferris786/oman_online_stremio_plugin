@@ -6,24 +6,101 @@ const BASE_URL = "https://osmanonline.info";
 // Cache for catalog results to improve performance
 let seriesCache = null;
 
-const POSTER_MAP = {
+// Comprehensive TMDB metadata for all series (posters + overviews)
+const TMDB_METADATA = {
     // Main navigation series
-    "Kurulus Osman": "https://image.tmdb.org/t/p/w500/tu4BWsGFHcYDWulZwHxylA91vo0.jpg",
-    "Kudus Fatihi Selahaddin Eyyubi": "https://image.tmdb.org/t/p/w500/5bljg22nvfS0eP320L5GFYJz3Zb.jpg",
-    "Mehmed Fetihler Sultani": "https://image.tmdb.org/t/p/w500/A8fHgHmcEQU1UcOcXhW3NXtwwcZ.jpg",
-    "Kurulus Orhan": "https://image.tmdb.org/t/p/w500/1kEgzEvhJmw5eSxuGwn0o1cgHlK.jpg",
+    "Kurulus Osman": {
+        poster: "https://image.tmdb.org/t/p/w500/tu4BWsGFHcYDWulZwHxylA91vo0.jpg",
+        overview: "The series will focus on the life of Osman Bey, the son of Ertugrul Gazi and the founder of the Ottoman Empire."
+    },
+    "Kudus Fatihi Selahaddin Eyyubi": {
+        poster: "https://image.tmdb.org/t/p/w500/5bljg22nvfS0eP320L5GFYJz3Zb.jpg",
+        overview: "The story of Saladin, the Kurdish warrior who became the Sultan of Egypt and Syria and led the Muslim military campaign against the Crusader states."
+    },
+    "Mehmed Fetihler Sultani": {
+        poster: "https://image.tmdb.org/t/p/w500/A8fHgHmcEQU1UcOcXhW3NXtwwcZ.jpg",
+        overview: "The life of Mehmed the Conqueror, the Ottoman Sultan who conquered Constantinople at the age of 21."
+    },
+    "Kurulus Orhan": {
+        poster: "https://image.tmdb.org/t/p/w500/1kEgzEvhJmw5eSxuGwn0o1cgHlK.jpg",
+        overview: "The story of Orhan Ghazi, the son of Osman I and the second Sultan of the Ottoman Empire."
+    },
 
-    // Additional series from homepage banners (TMDB posters)
-    "Destan": "https://image.tmdb.org/t/p/w500/cSDEb3XvsML6VwYZ5HEJy7vQUS.jpg",
-    "Dirilis Ertugrul": "https://image.tmdb.org/t/p/w500/rOar34cNLn2sgDH5FmAa1bvMpBv.jpg",
-    "Uyanis Buyuk Selcuklu": "https://image.tmdb.org/t/p/w500/8B1nL3gthGN55BHTMzZOlzBYNkU.jpg",
-    "Alparslan Buyuk Selcuklu": "https://image.tmdb.org/t/p/w500/4wKqK8T1wTdhXfhnZzz2TuJE2Zh.jpg",
-    "Payitaht Abdulhamid": "https://image.tmdb.org/t/p/w500/fmaWiokhUVDsVkCfoWaQEDFZFFP.jpg",
-    "Barbaroslar Akdenizin Kilici": "https://image.tmdb.org/t/p/w500/1VqjAWF5rW431wY4eEoV9oIyx0L.jpg",
-    "Barbaros Hayreddin Sultanin Fermani": "https://image.tmdb.org/t/p/w500/8fWkyBfGhDJdDNhZ5J4z0r1IzIt.jpg",
-    "Haci Bayram I Veli": "https://image.tmdb.org/t/p/w500/1yXOzjDVHeBPLH3KgQVATmK3UEB.jpg",
-    "Mavera": "https://image.tmdb.org/t/p/w500/15fGkzZHAz3gDuqAhvN6PvvyaUn.jpg",
-    "Mehmetcik Kutul Amare": "https://image.tmdb.org/t/p/w500/8DdZHf7mKcUT3u1YIAkYZ5X856C.jpg"
+    // Additional series from homepage banners (TMDB posters + overviews)
+    "Destan": {
+        poster: "https://image.tmdb.org/t/p/w500/cSDEb3XvsML6VwYZ5HEJy7vQUS.jpg",
+        overview: "The epic love between Akkiz, the legendary warrior mountain girl orphaned by Gök Khan Korkut Khan in the harsh steppes of Central Asia, and Gök Tegini Batuga, who was orphaned by Korkut Khan in the Gök Palace during Gokturk Khaganate."
+    },
+    "Dirilis Ertugrul": {
+        poster: "https://image.tmdb.org/t/p/w500/rOar34cNLn2sgDH5FmAa1bvMpBv.jpg",
+        overview: "Ertuğrul Bey and the Knights Templar in the 13th century Alba and step and step with the struggle against brutal Mongols depicts the process of establishing the Ottoman principality."
+    },
+    "Uyanis Buyuk Selcuklu": {
+        poster: "https://image.tmdb.org/t/p/w500/8B1nL3gthGN55BHTMzZOlzBYNkU.jpg",
+        overview: "The war of the Great Seljuk Emperor, Meliksah and her loyalist, Sencer against Hasan Sabbah, who is sworn to destroy the Seljuks."
+    },
+    "Alparslan Buyuk Selcuklu": {
+        poster: "https://image.tmdb.org/t/p/w500/4wKqK8T1wTdhXfhnZzz2TuJE2Zh.jpg",
+        overview: "It deals with the state structure, political events, wars of the Great Seljuk Empire and the life of Sultan Alparslan."
+    },
+    "Payitaht Abdulhamid": {
+        poster: "https://image.tmdb.org/t/p/w500/fmaWiokhUVDsVkCfoWaQEDFZFFP.jpg",
+        overview: "The fight of Abdülhamid II to keep the Ottoman Empire and Caliphate alive."
+    },
+    "Barbaroslar Akdenizin Kilici": {
+        poster: "https://image.tmdb.org/t/p/w500/1VqjAWF5rW431wY4eEoV9oIyx0L.jpg",
+        overview: "Barbaroslar: Sword of the Mediterranean retells the adventures of four brothers; Ishak, Oruc, Hizir, and Ilyas, who become seafarers and fight high tides and the secrets of the seas."
+    },
+    "Barbaros Hayreddin Sultanin Fermani": {
+        poster: "https://image.tmdb.org/t/p/w500/8fWkyBfGhDJdDNhZ5J4z0r1IzIt.jpg",
+        overview: "TRT's historical drama, based on the life of 'Barbaros' Hayreddin Pasha and his brothers. The series tells the adventures of Ishak, Oruc, Hizir, and Ilyas fighting high tides and the secrets of the seas in pursuit of the holy secret."
+    },
+    "Haci Bayram I Veli": {
+        poster: "https://image.tmdb.org/t/p/w500/1yXOzjDVHeBPLH3KgQVATmK3UEB.jpg",
+        overview: "The show is about a 14th century Turkish Sufi living in Anatolia and tells his spiritual journey over the course of his lifetime."
+    },
+    "Mavera": {
+        poster: "https://image.tmdb.org/t/p/w500/15fGkzZHAz3gDuqAhvN6PvvyaUn.jpg",
+        overview: "The fight of Hace Ahmed Yesevi, who was sent to Baghdad by Yusuf Hemedani."
+    },
+    "Mehmetcik Kutul Amare": {
+        poster: "https://image.tmdb.org/t/p/w500/8DdZHf7mKcUT3u1YIAkYZ5X856C.jpg",
+        overview: "During World War I, a group of determined soldiers fights to defend Ottoman territory against English invasion."
+    },
+
+    // Previously missing posters - now added!
+    "Rumi": {
+        poster: "https://image.tmdb.org/t/p/w500/oWMOYrtbV44eYbJ6gQYXWLpqjl2.jpg",
+        overview: "In 13th-century Anatolia, as the Mongol threat looms and internal turmoil rages, Rumi, a wise spiritual figure, emerges to assuage people's fears. His timeless words unite reason and compassion, inspiring change."
+    },
+    "Bozkir Aslani Celaleddin": {
+        poster: "https://image.tmdb.org/t/p/w500/1luRYqIi5C5WydghAwceRlbOXUA.jpg",
+        overview: "Jalal al-Din Khwarazmshah, the ruler of the Khwarazmian Empire, initiated a tragic but united struggle against the Mongol invasion. After unsuccessful attempts by the Khwarazm shahs to stop the Mongol invasion that began in the Central Asian steppes, Jalal al-Din, the last ruler of the empire, put dynastic fights between Seljuks and Khwarazmians aside, and tried to establish a united front to stop the Mongols."
+    },
+    "Aziz Mahmud Hudayi Askin Yolculugu": {
+        poster: "https://image.tmdb.org/t/p/w500/jHe1Z3kZ0bWNeCbapGenMyN9Jco.jpg",
+        overview: "The spiritual journey of Aziz Mahmud Hüdayi, a prominent Ottoman Sufi scholar and saint."
+    },
+    "Al Sancak": {
+        poster: "https://image.tmdb.org/t/p/w500/vlyQk1qV85ivpCJvt3EVTs9Egw.jpg",
+        overview: "The struggles of 10 talented soldiers out to protect their homeland against its enemies."
+    },
+    "Young Ibn Sina": {
+        poster: "https://image.tmdb.org/t/p/w500/cMeyeeGIX65vFmnb1PjqhjwLpYq.jpg",
+        overview: "Life story of Avicenna, philosopher of the Islamic Golden Age."
+    },
+    "Gilani The Ascetic": {
+        poster: "https://image.tmdb.org/t/p/w500/8Lw6rHrcgYUnpTBOO90bOTkIjt9.jpg",
+        overview: "Gilani the Ascetic sets out to Baghdad seeking truth along with Eşref. Following an enduring seclusion, he finds out that the city of Baghdad is in chaos and he begins his historic struggle for equality and peace."
+    },
+    "Mahsusa": {
+        poster: "https://image.tmdb.org/t/p/w500/icopMK2tpNdH8doBNuM6YZcDB1y.jpg",
+        overview: "A Turkish historical drama series focusing on special operations during the Ottoman era."
+    },
+    "Vefa Sultan": {
+        poster: "https://image.tmdb.org/t/p/w500/oDELdOgQuGW0L80MCPpdV9gID7L.jpg",
+        overview: "Vefa Sultan immerses audiences in the spiritual heart of the Ottoman Empire, portraying the devoted life of Muslihuddin Mustafa—revered as one of Istanbul's spiritual sultans. Through its rich atmosphere, the production vividly recreates the era's social and cultural fabric, offering a captivating glimpse into the world of faith and tradition."
+    }
 };
 
 async function getSeries() {
@@ -90,19 +167,22 @@ async function getSeries() {
                 const slug = href.split("/").filter(Boolean).pop();
                 const id = "osmanonline:" + slug;
 
-                // Try to find poster in our map (try exact match first, then fuzzy match)
+                // Try to find metadata in our map (try exact match first, then fuzzy match)
                 let poster = null;
+                let description = `Watch ${seriesName} on OsmanOnline`;
 
                 // Exact match
-                if (POSTER_MAP[seriesName]) {
-                    poster = POSTER_MAP[seriesName];
+                if (TMDB_METADATA[seriesName]) {
+                    poster = TMDB_METADATA[seriesName].poster;
+                    description = TMDB_METADATA[seriesName].overview || description;
                 } else {
                     // Fuzzy match: normalize titles for comparison
                     const normalizedName = seriesName.toLowerCase().replace(/[^a-z0-9]/g, '');
-                    for (const [key, value] of Object.entries(POSTER_MAP)) {
+                    for (const [key, metadata] of Object.entries(TMDB_METADATA)) {
                         const normalizedKey = key.toLowerCase().replace(/[^a-z0-9]/g, '');
                         if (normalizedName === normalizedKey || normalizedName.includes(normalizedKey)) {
-                            poster = value;
+                            poster = metadata.poster;
+                            description = metadata.overview || description;
                             break;
                         }
                     }
@@ -113,7 +193,7 @@ async function getSeries() {
                     type: "series",
                     name: seriesName,
                     poster: poster,
-                    description: `Watch ${seriesName} on OsmanOnline`,
+                    description: description,
                     url: href
                 });
             }
