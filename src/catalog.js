@@ -7,10 +7,23 @@ const BASE_URL = "https://osmanonline.info";
 let seriesCache = null;
 
 const POSTER_MAP = {
+    // Main navigation series
     "Kurulus Osman": "https://image.tmdb.org/t/p/w500/tu4BWsGFHcYDWulZwHxylA91vo0.jpg",
     "Kudus Fatihi Selahaddin Eyyubi": "https://image.tmdb.org/t/p/w500/5bljg22nvfS0eP320L5GFYJz3Zb.jpg",
     "Mehmed Fetihler Sultani": "https://image.tmdb.org/t/p/w500/A8fHgHmcEQU1UcOcXhW3NXtwwcZ.jpg",
-    "Kurulus Orhan": "https://image.tmdb.org/t/p/w500/1kEgzEvhJmw5eSxuGwn0o1cgHlK.jpg"
+    "Kurulus Orhan": "https://image.tmdb.org/t/p/w500/1kEgzEvhJmw5eSxuGwn0o1cgHlK.jpg",
+
+    // Additional series from homepage banners (TMDB posters)
+    "Destan": "https://image.tmdb.org/t/p/w500/cSDEb3XvsML6VwYZ5HEJy7vQUS.jpg",
+    "Dirilis Ertugrul": "https://image.tmdb.org/t/p/w500/rOar34cNLn2sgDH5FmAa1bvMpBv.jpg",
+    "Uyanis Buyuk Selcuklu": "https://image.tmdb.org/t/p/w500/8B1nL3gthGN55BHTMzZOlzBYNkU.jpg",
+    "Alparslan Buyuk Selcuklu": "https://image.tmdb.org/t/p/w500/4wKqK8T1wTdhXfhnZzz2TuJE2Zh.jpg",
+    "Payitaht Abdulhamid": "https://image.tmdb.org/t/p/w500/fmaWiokhUVDsVkCfoWaQEDFZFFP.jpg",
+    "Barbaroslar Akdenizin Kilici": "https://image.tmdb.org/t/p/w500/1VqjAWF5rW431wY4eEoV9oIyx0L.jpg",
+    "Barbaros Hayreddin Sultanin Fermani": "https://image.tmdb.org/t/p/w500/8fWkyBfGhDJdDNhZ5J4z0r1IzIt.jpg",
+    "Haci Bayram I Veli": "https://image.tmdb.org/t/p/w500/1yXOzjDVHeBPLH3KgQVATmK3UEB.jpg",
+    "Mavera": "https://image.tmdb.org/t/p/w500/15fGkzZHAz3gDuqAhvN6PvvyaUn.jpg",
+    "Mehmetcik Kutul Amare": "https://image.tmdb.org/t/p/w500/8DdZHf7mKcUT3u1YIAkYZ5X856C.jpg"
 };
 
 async function getSeries() {
@@ -26,34 +39,88 @@ async function getSeries() {
         const $ = cheerio.load(data);
 
         console.log("Page title:", $("title").text());
-        console.log("Nav length:", $("#main-nav").length);
 
         const series = [];
+        const seenUrls = new Set(); // Track URLs to avoid duplicates
 
-        // Try a more lenient selector
-        const items = $("#main-nav li a");
+        // HYBRID APPROACH: Scrape all series collection links from homepage
+        // Pattern: links containing "watch-" and "with-english-subtitles" but NOT "episode-"
+        const allLinks = $("a[href*='watch-'][href*='with-english-subtitles']");
 
-        items.each((i, el) => {
-            const title = $(el).text().trim();
+        console.log(`Total links matching pattern: ${allLinks.length}`);
+
+        allLinks.each((i, el) => {
             const href = $(el).attr("href");
+            const linkText = $(el).text().trim();
 
-            if (title && href && href !== "#" && title !== "Home" && title !== "Contact Us") {
+            // Filter out episode links (we only want series collection pages)
+            if (href && !href.match(/episode-\d+/i)) {
+                // Normalize URL to just the slug for duplicate detection
+                const normalizedSlug = href.split("/").filter(Boolean).pop();
+
+                if (seenUrls.has(normalizedSlug)) {
+                    return; // Skip duplicate
+                }
+                seenUrls.add(normalizedSlug);
+
+                // Extract clean series name from URL
+                // URL pattern: watch-{series-name}-with-english-subtitles
+                let seriesName = null;
+                const urlMatch = href.match(/watch-(.+?)-with-english-subtitles/i);
+
+                if (urlMatch) {
+                    // Convert URL slug to title case
+                    seriesName = urlMatch[1]
+                        .split('-')
+                        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+                        .join(' ');
+                }
+
+                // Use link text if available and cleaner than URL-derived name
+                if (linkText && linkText.length > 0 && linkText.length < 100 && !linkText.includes('\n')) {
+                    seriesName = linkText;
+                }
+
+                // Skip if we couldn't extract a valid name
+                if (!seriesName || seriesName === "Home" || seriesName === "Contact Us") {
+                    return;
+                }
+
                 // Create a stable ID from the URL slug
-                const id = "osmanonline:" + href.split("/").filter(Boolean).pop();
+                const slug = href.split("/").filter(Boolean).pop();
+                const id = "osmanonline:" + slug;
 
-                // Hardcoded posters
-                let poster = POSTER_MAP[title] || null;
+                // Try to find poster in our map (try exact match first, then fuzzy match)
+                let poster = null;
+
+                // Exact match
+                if (POSTER_MAP[seriesName]) {
+                    poster = POSTER_MAP[seriesName];
+                } else {
+                    // Fuzzy match: normalize titles for comparison
+                    const normalizedName = seriesName.toLowerCase().replace(/[^a-z0-9]/g, '');
+                    for (const [key, value] of Object.entries(POSTER_MAP)) {
+                        const normalizedKey = key.toLowerCase().replace(/[^a-z0-9]/g, '');
+                        if (normalizedName === normalizedKey || normalizedName.includes(normalizedKey)) {
+                            poster = value;
+                            break;
+                        }
+                    }
+                }
 
                 series.push({
                     id: id,
                     type: "series",
-                    name: title,
+                    name: seriesName,
                     poster: poster,
-                    description: `Watch ${title} on OsmanOnline`,
+                    description: `Watch ${seriesName} on OsmanOnline`,
                     url: href
                 });
             }
         });
+
+        console.log(`Discovered ${series.length} unique series`);
+        series.forEach(s => console.log(`  - ${s.name} (${s.poster ? 'has poster' : 'no poster'})`));
 
         seriesCache = series;
         return series;
