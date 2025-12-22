@@ -1,6 +1,21 @@
 const axios = require("axios");
 const cheerio = require("cheerio");
 const CryptoJS = require("crypto-js");
+const fs = require("fs");
+const path = require("path");
+
+const LOG_FILE = path.join(__dirname, "../debug_stream.log");
+
+function log(message) {
+    const timestamp = new Date().toISOString();
+    const logMsg = `[${timestamp}] ${message}\n`;
+    try {
+        fs.appendFileSync(LOG_FILE, logMsg);
+    } catch (e) {
+        console.error("Failed to write to log file:", e);
+    }
+    console.log(message); // Also log to console
+}
 
 // AES JSON formatter for CryptoJS
 const CryptoJSAesJson = {
@@ -26,177 +41,237 @@ const CryptoJSAesJson = {
 }
 
 async function getStream(type, id) {
+    log(`getStream called for type=${type}, id=${id}`);
     const parts = id.split(":");
-    if (parts.length < 3) return { streams: [] };
+    if (parts.length < 3) {
+        log("Invalid ID format");
+        return { streams: [] };
+    }
 
-    // id format: osmanonline:series_slug:episode_slug_or_full_url
-    // In catalog.js we passed the href as the 3rd part, but regex split might have messed it up if it contained colons?
-    // Actually our ID generation was just `id:episodeSlug` (see catalog.js).
-    // wait, `videos.push({ id: \`\${id}:\${episodeSlug}\`, ... })`
-    // `id` was `osmanonline:slug`.
-    // So distinct parts: `osmanonline`, `series_slug`, `episode_slug`.
-
+    // id format: osmanonline:series_slug:episode_slug
     const episodeSlug = parts.slice(2).join(":"); // Valid url slug
-    const episodeUrl = `https://osmanonline.info/${episodeSlug}`;
+    log(`episodeSlug: ${episodeSlug}`);
+
+    // Domain fallback logic
+    // Prioritize .co.uk as .info seems to have broken/expired iframes
+    const domains = [
+        "https://osmanonline.co.uk",
+        "https://osmanonline.co.uk/v11",
+        "https://osmanonline.info"
+    ];
+    let $ = null;
+    let iframeSrc = null;
+    let episodeUrl = "";
+
+    for (const domain of domains) {
+        episodeUrl = `${domain}/${episodeSlug}`;
+        try {
+            console.log(`Debug - Fetching stream page: ${episodeUrl}`);
+            log(`Fetching episode page: ${episodeUrl}`);
+            const { data } = await axios.get(episodeUrl, {
+                headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' }
+            });
+            $ = cheerio.load(data);
+
+            // Try standard Turktvuk
+            iframeSrc = $("iframe[src*='turktvuk.com']").attr("src");
+            if (iframeSrc) {
+                log(`Found Turktvuk iframe on ${domain}`);
+                break;
+            }
+
+            // Try Datebox
+            iframeSrc = $("iframe[src*='datebox']").attr("src");
+            if (iframeSrc) {
+                log(`Found Datebox iframe on ${domain}`);
+                break;
+            }
+
+            // Try generic video iframes
+            const genericIframe = $("iframe[src*='player'], iframe[src*='video'], iframe[src*='watch']").first().attr("src");
+            if (genericIframe) {
+                iframeSrc = genericIframe;
+                log(`Found generic video iframe on ${domain}: ${iframeSrc}`);
+                break;
+            }
+
+        } catch (err) {
+            log(`Failed to fetch ${episodeUrl}: ${err.message}`);
+        }
+    }
+
+    if (!iframeSrc) {
+        log("No known video iframe found on any domain.");
+        return { streams: [] };
+    }
+
+    // Ensure scheme
+    if (iframeSrc.startsWith("//")) iframeSrc = "https:" + iframeSrc;
+
+    log(`Processing iframe: ${iframeSrc}`);
 
     try {
-        console.log(`Fetching episode page: ${episodeUrl}`);
-        const { data } = await axios.get(episodeUrl, {
-            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' }
-        });
-        const $ = cheerio.load(data);
+        if (iframeSrc.includes("turktvuk.com")) {
+            // Fetch Turktvuk player page
+            const playerRes = await axios.get(iframeSrc, {
+                headers: {
+                    "Referer": episodeUrl,
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                }
+            });
 
-        let iframeSrc = $("iframe[src*='turktvuk.com']").attr("src");
-        if (!iframeSrc) {
-            console.log("No Turktvuk iframe found");
+            const cookies = playerRes.headers['set-cookie'];
+            let cookieHeader = "";
+            if (cookies) {
+                if (Array.isArray(cookies)) {
+                    cookieHeader = cookies.map(c => c.split(';')[0]).join('; ');
+                } else {
+                    cookieHeader = cookies.split(';')[0];
+                }
+                log(`Captured Cookies: ${cookieHeader}`);
+            }
+
+            const content = playerRes.data;
+            const packerRegex = /eval\(function\(p,a,c,k,e,d\).*?\.split\('\|'\),0,\{\}\)\)/s;
+            const packedMatch = content.match(packerRegex);
+
+            let ck = null;
+            let hash = null;
+
+            if (packedMatch) {
+                const unpacked = unpack(packedMatch[0]);
+
+                // Extract hash from FirePlayer("HASH", ...)
+                const hashMatch = unpacked.match(/FirePlayer\(\s*["']([a-f0-9]+)["']/);
+                if (hashMatch) hash = hashMatch[1];
+
+                // Extract ck from JSON/Object ... "ck":"..."
+                const ckMatch = unpacked.match(/["']ck["']\s*:\s*["']([^"']+)["']/);
+                if (ckMatch) {
+                    let rawCk = ckMatch[1];
+                    ck = rawCk.replace(/\\\\x([0-9A-Fa-f]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+                }
+            }
+
+            // Fallback: get hash from URL query if not found
+            if (!hash && iframeSrc.includes("data=")) {
+                hash = iframeSrc.split("data=")[1].split("&")[0];
+            }
+
+            if (!hash || !ck) {
+                log(`Failed to extract Hash or CK key. Hash: ${hash}, CK: ${ck}`);
+                return { streams: [] };
+            }
+
+            // Call API
+            const apiUrl = "https://turktvuk.com/player/index.php?data=" + hash + "&do=getVideo";
+            log(`Calling API: ${apiUrl}`);
+
+            const apiRes = await axios.post(apiUrl,
+                new URLSearchParams({
+                    hash: hash,
+                    r: episodeUrl
+                }), {
+                headers: {
+                    "X-Requested-With": "XMLHttpRequest",
+                    "Referer": iframeSrc,
+                    "Origin": "https://turktvuk.com",
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                    "Cookie": cookieHeader
+                }
+            });
+
+            const jData = apiRes.data;
+
+            if (jData.hls) {
+                let finalStreamUrl = jData.securedLink || jData.videoSource;
+
+                if (finalStreamUrl.includes(".m3u8")) {
+                    finalStreamUrl = finalStreamUrl.replace(".m3u8", ".txt");
+                }
+
+                const proxyHost = process.env.RENDER_EXTERNAL_URL || `http://127.0.0.1:${process.env.PORT || 7000}`;
+                const proxyUrl = `${proxyHost}/proxy?url=${encodeURIComponent(finalStreamUrl)}&cookie=${encodeURIComponent(cookieHeader || "")}&.m3u8`;
+                log("Returning Proxy URL");
+
+                return {
+                    streams: [
+                        {
+                            title: "Auto (HLS) [Proxy]",
+                            url: proxyUrl,
+                            behaviorHints: {
+                                notWebReady: true
+                            }
+                        }
+                    ]
+                };
+            }
+
+            if (jData.videoSources && jData.videoSources.length > 0) {
+                const encryptedFile = jData.videoSources[0].file;
+                const decryptedUrl = CryptoJSAesJson.decrypt(encryptedFile, ck);
+
+                let finalStreamUrl = decryptedUrl;
+                const proxyHost = process.env.RENDER_EXTERNAL_URL || `http://127.0.0.1:${process.env.PORT || 7000}`;
+                const proxyUrl = `${proxyHost}/proxy?url=${encodeURIComponent(finalStreamUrl)}&cookie=${encodeURIComponent(cookieHeader || "")}&.m3u8`;
+                log("Returning Proxy URL (Fallback)");
+
+                return {
+                    streams: [
+                        {
+                            title: "Auto (HLS) [Proxy]",
+                            url: proxyUrl,
+                            behaviorHints: {
+                                notWebReady: true
+                            }
+                        }
+                    ]
+                };
+            }
+        }
+        else if (iframeSrc.includes("datebox")) {
+            log("Datebox detected. Not implemented.");
             return { streams: [] };
         }
+        else if (iframeSrc.includes("streamify360.com")) {
+            log("Streamify360 detected. Fetching player page...");
+            const playerRes = await axios.get(iframeSrc, {
+                headers: {
+                    "Referer": episodeUrl,
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                }
+            });
 
-        // Ensure scheme
-        if (iframeSrc.startsWith("//")) iframeSrc = "https:" + iframeSrc;
+            const content = playerRes.data;
+            const sourceMatch = content.match(/sources:\s*\[\s*\{\s*["']file["']:\s*["']([^"']+)["']/);
 
-        console.log(`Found iframe: ${iframeSrc}`);
+            if (sourceMatch) {
+                const streamUrl = sourceMatch[1];
+                log(`Streamify360 Stream URL extracted: ${streamUrl}`);
 
-        // Fetch Turktvuk player page
-        const playerRes = await axios.get(iframeSrc, {
-            headers: {
-                "Referer": episodeUrl,
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-            }
-        });
+                const proxyHost = process.env.RENDER_EXTERNAL_URL || `http://127.0.0.1:${process.env.PORT || 7000}`;
+                const proxyUrl = `${proxyHost}/proxy?url=${encodeURIComponent(streamUrl)}&headers=${encodeURIComponent(JSON.stringify({ "Referer": "https://streamify360.com/" }))}&.m3u8`;
 
-        // console.log("Player Page Response Headers:", JSON.stringify(playerRes.headers, null, 2));
-        // require("fs").writeFileSync("headers_dump.json", JSON.stringify(playerRes.headers, null, 2));
-
-        const cookies = playerRes.headers['set-cookie'];
-        let cookieHeader = "";
-        if (cookies) {
-            if (Array.isArray(cookies)) {
-                cookieHeader = cookies.map(c => c.split(';')[0]).join('; ');
+                return {
+                    streams: [
+                        {
+                            title: "Streamify360 [Proxy]",
+                            url: proxyUrl,
+                            behaviorHints: {
+                                notWebReady: true
+                            }
+                        }
+                    ]
+                };
             } else {
-                cookieHeader = cookies.split(';')[0];
+                log("Could not extract video source from Streamify360");
             }
-            console.log("Captured Cookies:", cookieHeader);
-        }
-
-        const content = playerRes.data;
-        const packerRegex = /eval\(function\(p,a,c,k,e,d\).*?\.split\('\|'\),0,\{\}\)\)/s;
-        const packedMatch = content.match(packerRegex);
-
-        let ck = null;
-        let hash = null;
-
-        if (packedMatch) {
-            // console.log("Unpacking script...");
-            const unpacked = unpack(packedMatch[0]);
-
-            // Extract hash from FirePlayer("HASH", ...)
-            const hashMatch = unpacked.match(/FirePlayer\(\s*["']([a-f0-9]+)["']/);
-            if (hashMatch) hash = hashMatch[1];
-
-            // Extract ck from JSON/Object ... "ck":"..."
-            // Handle escaped hex chars if present
-            const ckMatch = unpacked.match(/["']ck["']\s*:\s*["']([^"']+)["']/);
-            if (ckMatch) {
-                let rawCk = ckMatch[1];
-                // Decode \\xHH
-                ck = rawCk.replace(/\\\\x([0-9A-Fa-f]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
-            }
-        }
-
-        // Fallback: get hash from URL query if not found
-        if (!hash && iframeSrc.includes("data=")) {
-            hash = iframeSrc.split("data=")[1].split("&")[0];
-        }
-
-        if (!hash || !ck) {
-            console.error("Failed to extract Hash or CK key", { hash, ck });
-            return { streams: [] };
-        }
-
-        console.log(`Hash: ${hash}, CK: ${ck}`);
-
-        // Call API
-        const apiUrl = "https://turktvuk.com/player/index.php?data=" + hash + "&do=getVideo";
-        console.log(`Calling API: ${apiUrl}`);
-
-        const apiRes = await axios.post(apiUrl,
-            new URLSearchParams({
-                hash: hash,
-                r: episodeUrl
-            }), {
-            headers: {
-                "X-Requested-With": "XMLHttpRequest",
-                "Referer": iframeSrc,
-                "Origin": "https://turktvuk.com",
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                "Cookie": cookieHeader // Pass the cookie!
-            }
-        });
-
-        const jData = apiRes.data;
-        // console.log("API Response:", JSON.stringify(jData));
-        // require("fs").writeFileSync("api_dump.json", JSON.stringify(jData, null, 2));
-
-        if (jData.hls) {
-            // Prioritize securedLink which contains the token
-            let finalStreamUrl = jData.securedLink || jData.videoSource;
-
-            // Construct Proxy URL
-            // Force .txt extension on the inner URL if it is .m3u8
-            if (finalStreamUrl.includes(".m3u8")) {
-                finalStreamUrl = finalStreamUrl.replace(".m3u8", ".txt");
-                console.log("Forced extension to .txt (bypass 403):", finalStreamUrl);
-            }
-
-            // Use public URL on Render, localhost for local dev
-            const proxyHost = process.env.RENDER_EXTERNAL_URL || `http://127.0.0.1:${process.env.PORT || 7000}`;
-            const proxyUrl = `${proxyHost}/proxy?url=${encodeURIComponent(finalStreamUrl)}&cookie=${encodeURIComponent(cookieHeader || "")}&.m3u8`;
-            console.log("Proxy URL:", proxyUrl);
-
-            return {
-                streams: [
-                    {
-                        title: "Auto (HLS) [Proxy]",
-                        url: proxyUrl,
-                        behaviorHints: {
-                            notWebReady: true
-                        }
-                    }
-                ]
-            };
-        }
-
-        if (jData.videoSources && jData.videoSources.length > 0) {
-            const encryptedFile = jData.videoSources[0].file;
-            const decryptedUrl = CryptoJSAesJson.decrypt(encryptedFile, ck);
-            console.log("Decrypted URL:", decryptedUrl);
-
-            // Fix: turktvuk sometimes returns .txt for m3u8 playlists
-            let finalStreamUrl = decryptedUrl;
-
-            // Construct Proxy URL
-            // Use public URL on Render, localhost for local dev
-            const proxyHost = process.env.RENDER_EXTERNAL_URL || `http://127.0.0.1:${process.env.PORT || 7000}`;
-            const proxyUrl = `${proxyHost}/proxy?url=${encodeURIComponent(finalStreamUrl)}&cookie=${encodeURIComponent(cookieHeader || "")}&.m3u8`;
-            console.log("Proxy URL (Fallback):", proxyUrl);
-
-            return {
-                streams: [
-                    {
-                        title: "Auto (HLS) [Proxy]",
-                        url: proxyUrl,
-                        behaviorHints: {
-                            notWebReady: true
-                        }
-                    }
-                ]
-            };
         }
 
         return { streams: [] };
 
     } catch (error) {
+        log(`Error in getStream: ${error.message}`);
         console.error("Error in getStream:", error.message);
         return { streams: [] };
     }

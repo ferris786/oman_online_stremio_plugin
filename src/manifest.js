@@ -1,8 +1,8 @@
 const { addonBuilder } = require("stremio-addon-sdk");
 
 const manifest = {
-    id: "org.osmanonline.stremio",
-    version: "1.0.0",
+    id: "org.osmanonline.stremio.v2",
+    version: "1.0.6",
     name: "Osman Online",
     description: "Watch Turkish historical dramas from OsmanOnline.info",
     resources: ["catalog", "meta", "stream"],

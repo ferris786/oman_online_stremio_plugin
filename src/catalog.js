@@ -238,10 +238,38 @@ async function getMeta(type, id) {
         // Debug selector
         console.log("Episodes found:", $("a.shortc-button.big.red").length);
 
-        // Selector based on research: a.shortc-button.big.red
-        $("a.shortc-button.big.red").each((i, el) => {
+        // Selector based on research: a.shortc-button.big.red OR generic a with href containing 'episode-'
+        let episodeLinks = $("a.shortc-button.big.red");
+
+        // Fallback or additive: if few results, try generic links
+        if (episodeLinks.length === 0) {
+            console.log("No standard buttons found, trying generic links...");
+
+            // Create a filter based on the series URL to avoid sidebar/footer links
+            const seriesSlugMatch = series.url.match(/watch-([^/]+)-with-english-subtitles/);
+            const seriesCore = seriesSlugMatch ? seriesSlugMatch[1] : null;
+            console.log(`Debug - Series Core: ${seriesCore}`);
+
+            console.log(`Debug - Initial generic candidates: ${$("a[href*='episode-']").length}`);
+            episodeLinks = $("a[href*='episode-']").filter((i, el) => {
+                const href = $(el).attr("href");
+                if (!href || href.length < 10) return false;
+
+                // Critical: Ensure the link belongs to THIS series
+                const match = seriesCore && href.includes(seriesCore);
+                // console.log(`Checking link: ${href} (Core: ${seriesCore}) -> Match: ${match}`);
+
+                if (seriesCore && !match) {
+                    return false;
+                }
+                return true;
+            });
+            console.log(`Debug - Generic links after filter: ${episodeLinks.length}`);
+        }
+
+        episodeLinks.each((i, el) => {
             const title = $(el).text().trim();
-            const href = $(el).attr("href");
+            let href = $(el).attr("href");
 
             // Extract episode number or season/episode from text if possible
             // Format example: "Season 1 Episode 1 Bolum 1"
@@ -259,6 +287,13 @@ async function getMeta(type, id) {
             }
 
             if (href) {
+                // BUGFIX: Rumi series page links to 'watch-rumi-' which are 404s.
+                // The actual valid episodes are 'watch-mavlana-celaleddin-rumi-'.
+                // We must rewrite the href here.
+                if (series.name === 'Rumi' && href.includes('watch-rumi-')) {
+                    href = href.replace('watch-rumi-', 'watch-mavlana-celaleddin-rumi-');
+                }
+
                 // ID format: osmanonline:slug:url_hash_or_slug
                 // We'll use the episode page slug as the unique identifier part
                 const episodeSlug = href.split("/").filter(Boolean).pop();
@@ -283,6 +318,7 @@ async function getMeta(type, id) {
                 type: "series",
                 name: series.name,
                 poster: series.poster,
+                background: series.poster, // Use poster as background per user request
                 description: series.description,
                 videos: videos
             }
