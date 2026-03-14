@@ -3,6 +3,7 @@ const cheerio = require("cheerio");
 const CryptoJS = require("crypto-js");
 const fs = require("fs");
 const path = require("path");
+const { getKayiFamilyStream } = require("./kayifamily");
 
 const LOG_FILE = path.join(__dirname, "../debug_stream.log");
 
@@ -40,18 +41,7 @@ const CryptoJSAesJson = {
     }
 }
 
-async function getStream(type, id) {
-    log(`getStream called for type=${type}, id=${id}`);
-    const parts = id.split(":");
-    if (parts.length < 3) {
-        log("Invalid ID format");
-        return { streams: [] };
-    }
-
-    // id format: osmanonline:series_slug:episode_slug
-    const episodeSlug = parts.slice(2).join(":"); // Valid url slug
-    log(`episodeSlug: ${episodeSlug}`);
-
+async function getOsmanOnlineStream(episodeSlug) {
     // Domain fallback logic
     // Prioritize .co.uk as .info seems to have broken/expired iframes
     const domains = [
@@ -102,7 +92,7 @@ async function getStream(type, id) {
 
     if (!iframeSrc) {
         log("No known video iframe found on any domain.");
-        return { streams: [] };
+        return null;
     }
 
     // Ensure scheme
@@ -160,7 +150,7 @@ async function getStream(type, id) {
 
             if (!hash || !ck) {
                 log(`Failed to extract Hash or CK key. Hash: ${hash}, CK: ${ck}`);
-                return { streams: [] };
+                return null;
             }
 
             // Call API
@@ -182,6 +172,7 @@ async function getStream(type, id) {
             });
 
             const jData = apiRes.data;
+            const proxyHost = process.env.RENDER_EXTERNAL_URL || `http://127.0.0.1:${process.env.PORT || 7000}`;
 
             if (jData.hls) {
                 let finalStreamUrl = jData.securedLink || jData.videoSource;
@@ -190,32 +181,12 @@ async function getStream(type, id) {
                     finalStreamUrl = finalStreamUrl.replace(".m3u8", ".txt");
                 }
 
-                const proxyHost = process.env.RENDER_EXTERNAL_URL || `http://127.0.0.1:${process.env.PORT || 7000}`;
                 const proxyUrl = `${proxyHost}/proxy?url=${encodeURIComponent(finalStreamUrl)}&cookie=${encodeURIComponent(cookieHeader || "")}&.m3u8`;
                 log("Returning Proxy URL");
 
-                // Return TWO stream options:
-                // 1. Native player (may have AC3 audio issues on some Android TVs)
-                // 2. External player option (VLC - better codec support)
                 return {
-                    streams: [
-                        {
-                            name: "HLS Stream",
-                            title: "Play with Stremio (may have audio issues on TV)",
-                            url: proxyUrl,
-                            behaviorHints: {
-                                notWebReady: true
-                            }
-                        },
-                        {
-                            name: "HLS Stream (External Player)",
-                            title: "Play with VLC (fixes audio issues)",
-                            url: proxyUrl,
-                            behaviorHints: {
-                                notWebReady: false  // Allows external player selection
-                            }
-                        }
-                    ]
+                    url: proxyUrl,
+                    source: 'osmanonline'
                 };
             }
 
@@ -224,36 +195,18 @@ async function getStream(type, id) {
                 const decryptedUrl = CryptoJSAesJson.decrypt(encryptedFile, ck);
 
                 let finalStreamUrl = decryptedUrl;
-                const proxyHost = process.env.RENDER_EXTERNAL_URL || `http://127.0.0.1:${process.env.PORT || 7000}`;
                 const proxyUrl = `${proxyHost}/proxy?url=${encodeURIComponent(finalStreamUrl)}&cookie=${encodeURIComponent(cookieHeader || "")}&.m3u8`;
                 log("Returning Proxy URL (Fallback)");
 
-                // Return TWO stream options for fallback too
                 return {
-                    streams: [
-                        {
-                            title: "Play with Stremio (may have audio issues on TV)",
-                            url: proxyUrl,
-                            behaviorHints: {
-                                notWebReady: true
-                            }
-                        },
-                        {
-                            title: "Play with VLC (fixes audio issues)",
-                            url: proxyUrl,
-                            behaviorHints: {
-                                notWebReady: false
-                            }
-                        }
-                    ]
+                    url: proxyUrl,
+                    source: 'osmanonline'
                 };
             }
         }
-        else if (iframeSrc.includes("datebox")) {
-            log("Datebox detected. Not implemented.");
-            return { streams: [] };
-        }
-        else if (iframeSrc.includes("streamify360.com")) {
+
+        // Handle Streamify360
+        if (iframeSrc.includes("streamify360.com")) {
             log("Streamify360 detected. Fetching player page...");
             const playerRes = await axios.get(iframeSrc, {
                 headers: {
@@ -272,37 +225,100 @@ async function getStream(type, id) {
                 const proxyHost = process.env.RENDER_EXTERNAL_URL || `http://127.0.0.1:${process.env.PORT || 7000}`;
                 const proxyUrl = `${proxyHost}/proxy?url=${encodeURIComponent(streamUrl)}&headers=${encodeURIComponent(JSON.stringify({ "Referer": "https://streamify360.com/" }))}&.m3u8`;
 
-                // Return TWO stream options for Streamify360 too
                 return {
-                    streams: [
-                        {
-                            title: "Streamify360 - Play with Stremio",
-                            url: proxyUrl,
-                            behaviorHints: {
-                                notWebReady: true
-                            }
-                        },
-                        {
-                            title: "Streamify360 - Play with VLC",
-                            url: proxyUrl,
-                            behaviorHints: {
-                                notWebReady: false
-                            }
-                        }
-                    ]
+                    url: proxyUrl,
+                    source: 'osmanonline'
                 };
-            } else {
-                log("Could not extract video source from Streamify360");
             }
         }
 
-        return { streams: [] };
+        return null;
 
     } catch (error) {
-        log(`Error in getStream: ${error.message}`);
-        console.error("Error in getStream:", error.message);
+        log(`Error in getOsmanOnlineStream: ${error.message}`);
+        return null;
+    }
+}
+
+async function getStream(type, id) {
+    log(`getStream called for type=${type}, id=${id}`);
+    const parts = id.split(":");
+    if (parts.length < 3) {
+        log("Invalid ID format");
         return { streams: [] };
     }
+
+    // id format: osmanonline:series_slug:episode_slug
+    const seriesSlug = parts[1];
+    const episodeSlug = parts.slice(2).join(":"); // Valid url slug
+    log(`episodeSlug: ${episodeSlug}`);
+
+    // Parse season and episode from slug
+    // e.g., "watch-kurulus-osman-season-3-episode-45-with-english-subtitles"
+    const seasonMatch = episodeSlug.match(/season-(\d+)/);
+    const episodeMatch = episodeSlug.match(/episode-(\d+)/);
+    
+    const season = seasonMatch ? parseInt(seasonMatch[1]) : 1;
+    const episode = episodeMatch ? parseInt(episodeMatch[1]) : 1;
+    
+    log(`Parsed: series=${seriesSlug}, season=${season}, episode=${episode}`);
+
+    const streams = [];
+
+    // Source 1: OsmanOnline (existing)
+    try {
+        log("Fetching from OsmanOnline...");
+        const osmanStream = await getOsmanOnlineStream(episodeSlug);
+        if (osmanStream) {
+            // Add two options for OsmanOnline (native and external player)
+            streams.push({
+                name: "OsmanOnline",
+                title: "Source 1: OsmanOnline (use VLC if no audio)",
+                url: osmanStream.url,
+                behaviorHints: {
+                    notWebReady: true
+                }
+            });
+            streams.push({
+                name: "OsmanOnline (External)",
+                title: "Source 1: OsmanOnline - External Player",
+                url: osmanStream.url,
+                behaviorHints: {
+                    notWebReady: false
+                }
+            });
+            log("Added OsmanOnline streams");
+        }
+    } catch (err) {
+        log(`OsmanOnline fetch error: ${err.message}`);
+    }
+
+    // Source 2: KayiFamily (new)
+    try {
+        log("Fetching from KayiFamily...");
+        const kayiStream = await getKayiFamilyStream(seriesSlug, season, episode);
+        if (kayiStream) {
+            streams.push({
+                name: "KayiFamily",
+                title: "Source 2: KayiFamily (usually better audio)",
+                url: kayiStream.url,
+                behaviorHints: {
+                    notWebReady: true
+                }
+            });
+            log("Added KayiFamily stream");
+        }
+    } catch (err) {
+        log(`KayiFamily fetch error: ${err.message}`);
+    }
+
+    if (streams.length === 0) {
+        log("No streams found from any source");
+        return { streams: [] };
+    }
+
+    log(`Returning ${streams.length} stream(s)`);
+    return { streams };
 }
 
 function unpack(packed) {
