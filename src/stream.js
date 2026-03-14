@@ -186,12 +186,12 @@ async function getStream(type, id) {
             if (jData.hls) {
                 let finalStreamUrl = jData.securedLink || jData.videoSource;
 
-                if (finalStreamUrl.includes(".m3u8")) {
-                    finalStreamUrl = finalStreamUrl.replace(".m3u8", ".txt");
-                }
-
+                // Keep .m3u8 extension for ExoPlayer compatibility - DO NOT rewrite to .txt
+                // ExoPlayer on Android TV requires .m3u8 extension to detect HLS format
+                
                 const proxyHost = process.env.RENDER_EXTERNAL_URL || `http://127.0.0.1:${process.env.PORT || 7000}`;
-                const proxyUrl = `${proxyHost}/proxy?url=${encodeURIComponent(finalStreamUrl)}&cookie=${encodeURIComponent(cookieHeader || "")}&.m3u8`;
+                // Use .m3u8 extension in proxy URL for proper format detection
+                const proxyUrl = `${proxyHost}/proxy?url=${encodeURIComponent(finalStreamUrl)}&cookie=${encodeURIComponent(cookieHeader || "")}`;
                 log("Returning Proxy URL");
 
                 return {
@@ -199,8 +199,16 @@ async function getStream(type, id) {
                         {
                             title: "Auto (HLS) [Proxy]",
                             url: proxyUrl,
+                            type: "hls",  // Critical for ExoPlayer Android TV
+                            mimetype: "application/vnd.apple.mpegurl",  // Explicit MIME type
                             behaviorHints: {
-                                notWebReady: true
+                                notWebReady: true,
+                                proxyHeaders: {
+                                    request: {
+                                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                                        "Referer": iframeSrc
+                                    }
+                                }
                             }
                         }
                     ]
@@ -213,7 +221,7 @@ async function getStream(type, id) {
 
                 let finalStreamUrl = decryptedUrl;
                 const proxyHost = process.env.RENDER_EXTERNAL_URL || `http://127.0.0.1:${process.env.PORT || 7000}`;
-                const proxyUrl = `${proxyHost}/proxy?url=${encodeURIComponent(finalStreamUrl)}&cookie=${encodeURIComponent(cookieHeader || "")}&.m3u8`;
+                const proxyUrl = `${proxyHost}/proxy?url=${encodeURIComponent(finalStreamUrl)}&cookie=${encodeURIComponent(cookieHeader || "")}`;
                 log("Returning Proxy URL (Fallback)");
 
                 return {
@@ -221,8 +229,16 @@ async function getStream(type, id) {
                         {
                             title: "Auto (HLS) [Proxy]",
                             url: proxyUrl,
+                            type: "hls",  // Critical for ExoPlayer Android TV
+                            mimetype: "application/vnd.apple.mpegurl",  // Explicit MIME type
                             behaviorHints: {
-                                notWebReady: true
+                                notWebReady: true,
+                                proxyHeaders: {
+                                    request: {
+                                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                                        "Referer": iframeSrc
+                                    }
+                                }
                             }
                         }
                     ]
@@ -257,8 +273,16 @@ async function getStream(type, id) {
                         {
                             title: "Streamify360 [Proxy]",
                             url: proxyUrl,
+                            type: "hls",  // Critical for ExoPlayer Android TV
+                            mimetype: "application/vnd.apple.mpegurl",  // Explicit MIME type
                             behaviorHints: {
-                                notWebReady: true
+                                notWebReady: true,
+                                proxyHeaders: {
+                                    request: {
+                                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                                        "Referer": "https://streamify360.com/"
+                                    }
+                                }
                             }
                         }
                     ]

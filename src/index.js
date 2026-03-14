@@ -32,10 +32,11 @@ builder.defineStreamHandler(async ({ type, id }) => {
     return await getStream(type, id);
 });
 
-// Proxy Route
+// Proxy Route - Fixed for Android TV / ExoPlayer compatibility
 app.get("/proxy", async (req, res) => {
     const targetUrl = req.query.url;
     const cookie = req.query.cookie;
+    const referer = req.query.referer || "https://streamify360.com/";  // Allow dynamic referer
 
     if (!targetUrl) {
         return res.status(400).send("Missing url param");
@@ -43,27 +44,57 @@ app.get("/proxy", async (req, res) => {
 
     try {
         console.log(`Proxying: ${targetUrl}`);
-        // console.log(`Proxy Cookie: ${cookie}`);
+        log(`Proxy request for: ${targetUrl}`);
+
+        // Forward Range header for ExoPlayer seeking support (critical for Android TV)
+        const rangeHeader = req.headers.range;
+        if (rangeHeader) {
+            log(`Forwarding Range header: ${rangeHeader}`);
+        }
 
         const response = await axios.get(targetUrl, {
             headers: {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                "Referer": "https://streamify360.com/",
+                "User-Agent": req.headers["user-agent"] || "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Referer": referer,
                 "Cookie": cookie || "",
                 "Accept": "*/*",
-                "Accept-Encoding": "identity"
+                // Forward Range header if present (critical for ExoPlayer seeking)
+                ...(rangeHeader && { "Range": rangeHeader })
             },
-            responseType: "stream", // STREAMING: Important for low memory usage
-            validateStatus: (status) => status < 400
+            responseType: "stream",
+            validateStatus: (status) => status < 400 || status === 206  // Allow 206 Partial Content
         });
 
-        const contentType = response.headers["content-type"];
-        res.setHeader("Content-Type", contentType);
+        // Forward critical headers for ExoPlayer (Content-Length, Accept-Ranges, etc.)
+        const headersToForward = [
+            "content-type",
+            "content-length",
+            "content-range",
+            "accept-ranges",
+            "etag",
+            "last-modified",
+            "cache-control"
+        ];
+        
+        headersToForward.forEach(header => {
+            const value = response.headers[header];
+            if (value) res.setHeader(header, value);
+        });
 
-        // Check if playlist to rewrite
-        // .txt or .m3u8 or application/vnd.apple.mpegurl
-        const isPlaylist = targetUrl.includes(".txt") || targetUrl.includes(".m3u8") ||
-            (contentType && contentType.includes("mpegurl"));
+        // Set CORS headers for cross-origin requests
+        res.setHeader("Access-Control-Allow-Origin", "*");
+        res.setHeader("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
+        res.setHeader("Access-Control-Allow-Headers", "Range, Accept-Encoding, Origin, X-Requested-With, Content-Type");
+        res.setHeader("Access-Control-Expose-Headers", "Content-Length, Content-Range, Accept-Ranges");
+
+        // Set status code to match upstream (200 OK or 206 Partial Content)
+        res.status(response.status);
+
+        const contentType = response.headers["content-type"] || "";
+        
+        // Check if playlist to rewrite (HLS m3u8)
+        const isPlaylist = targetUrl.includes(".m3u8") || targetUrl.includes(".txt") ||
+            contentType.includes("mpegurl") || contentType.includes("x-mpegurl");
 
         // If it's a playlist, we MUST buffer it to rewrite the URLs inside
         if (isPlaylist) {
@@ -78,9 +109,10 @@ app.get("/proxy", async (req, res) => {
                 // Force HLS content type for Stremio to ensure it recognizes the playlist
                 res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
 
-                // Rewrite URLs
+                // Rewrite URLs to absolute URLs (critical for Android TV ExoPlayer)
                 const baseUrl = targetUrl.substring(0, targetUrl.lastIndexOf("/") + 1);
                 const hostUrl = new URL(targetUrl).origin;
+                const proxyHost = `${req.protocol}://${req.get("host")}`;
 
                 const rewritten = content.replace(/^(?!#)(.+)$/gm, (line) => {
                     line = line.trim();
@@ -95,7 +127,8 @@ app.get("/proxy", async (req, res) => {
                         absoluteLine = baseUrl + line;
                     }
 
-                    const proxyPath = `/proxy?url=${encodeURIComponent(absoluteLine)}&cookie=${encodeURIComponent(cookie || "")}`;
+                    // Use absolute URLs for Android TV compatibility
+                    const proxyPath = `${proxyHost}/proxy?url=${encodeURIComponent(absoluteLine)}&cookie=${encodeURIComponent(cookie || "")}&referer=${encodeURIComponent(referer)}`;
                     return proxyPath;
                 });
 
@@ -104,6 +137,7 @@ app.get("/proxy", async (req, res) => {
 
             response.data.on("error", (err) => {
                 console.error("Stream error (playlist):", err);
+                log(`Stream error (playlist): ${err.message}`);
                 if (!res.headersSent) res.status(500).send("Stream error");
             });
 
@@ -114,19 +148,70 @@ app.get("/proxy", async (req, res) => {
 
             response.data.on("error", (err) => {
                 console.error("Stream error (pipe):", err);
-                // Cannot send error status if headers usually already sent by pipe, but good to log
+                log(`Stream error (pipe): ${err.message}`);
+                if (!res.destroyed) res.destroy();
+            });
+
+            // Handle client disconnect
+            req.on("close", () => {
+                response.data.destroy();
             });
         }
 
     } catch (e) {
         console.error("Proxy error:", e.message);
+        log(`Proxy error: ${e.message}`);
         if (e.response) {
-            // Since we used responseType: stream, e.response.data is a stream. 
-            // We might want to read it to see the error message if needed, but usually status is enough.
             if (!res.headersSent) res.sendStatus(e.response.status);
         } else {
             if (!res.headersSent) res.status(500).send(e.message);
         }
+    }
+});
+
+// Handle HEAD requests for ExoPlayer (used for capability checks)
+app.head("/proxy", async (req, res) => {
+    const targetUrl = req.query.url;
+    const cookie = req.query.cookie;
+    const referer = req.query.referer || "https://streamify360.com/";
+
+    if (!targetUrl) {
+        return res.status(400).send("Missing url param");
+    }
+
+    try {
+        const response = await axios.head(targetUrl, {
+            headers: {
+                "User-Agent": req.headers["user-agent"] || "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                "Referer": referer,
+                "Cookie": cookie || "",
+                "Accept": "*/*"
+            },
+            validateStatus: (status) => status < 400 || status === 206
+        });
+
+        // Forward headers
+        const headersToForward = [
+            "content-type",
+            "content-length",
+            "accept-ranges",
+            "etag",
+            "last-modified"
+        ];
+        
+        headersToForward.forEach(header => {
+            const value = response.headers[header];
+            if (value) res.setHeader(header, value);
+        });
+
+        res.setHeader("Access-Control-Allow-Origin", "*");
+        res.setHeader("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
+        res.setHeader("Access-Control-Expose-Headers", "Content-Length, Accept-Ranges");
+
+        res.status(response.status).end();
+    } catch (e) {
+        console.error("Proxy HEAD error:", e.message);
+        if (!res.headersSent) res.status(e.response?.status || 500).end();
     }
 });
 
