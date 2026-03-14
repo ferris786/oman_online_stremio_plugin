@@ -4,6 +4,7 @@ const CryptoJS = require("crypto-js");
 const fs = require("fs");
 const path = require("path");
 const { getKayiFamilyStream } = require("./kayifamily");
+const { getKayiFamilyTVStream } = require("./kayifamilytv");
 
 const LOG_FILE = path.join(__dirname, "../debug_stream.log");
 
@@ -310,6 +311,25 @@ async function getStream(type, id) {
         }
     } catch (err) {
         log(`KayiFamily fetch error: ${err.message}`);
+    }
+
+    // Source 3: KayiFamilyTV (Ok.ru videos - very reliable)
+    try {
+        log("Fetching from KayiFamilyTV...");
+        const kayiTVStream = await getKayiFamilyTVStream(seriesSlug, season, episode);
+        if (kayiTVStream) {
+            streams.push({
+                name: "KayiFamilyTV",
+                title: "Source 3: KayiFamilyTV (Ok.ru - very reliable)",
+                url: kayiTVStream.url,
+                behaviorHints: {
+                    notWebReady: true
+                }
+            });
+            log("Added KayiFamilyTV stream");
+        }
+    } catch (err) {
+        log(`KayiFamilyTV fetch error: ${err.message}`);
     }
 
     if (streams.length === 0) {
