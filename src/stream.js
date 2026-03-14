@@ -197,7 +197,8 @@ async function getStream(type, id) {
                 return {
                     streams: [
                         {
-                            title: "Auto (HLS) [Proxy]",
+                            name: "HLS Stream",
+                            title: "Turkish Series (Use 'External Player' if no audio)",
                             url: proxyUrl,
                             behaviorHints: {
                                 notWebReady: true
