@@ -1,51 +1,34 @@
 const axios = require("axios");
 const cheerio = require("cheerio");
 
+// Enable debug logging
+const DEBUG = true;
+function log(msg) {
+    if (DEBUG) console.log(`[KayiFamily] ${msg}`);
+}
+
 // Episode offset lookup for series with absolute numbering on KayiFamily
-// These offsets convert season-relative episodes to absolute episode numbers
 const SEASON_OFFSETS = {
     'kurulus-osman': {
         1: 0,   // Episodes 1-27
-        2: 27,  // Episodes 28-64 (27+37)
-        3: 64,  // Episodes 65-98 (27+37+34)
-        4: 98,  // Episodes 99-130 (27+37+34+32)
-        5: 130, // Episodes 131-164 (27+37+34+32+34)
-        6: 164  // Episodes 165+ (27+37+34+32+34+34)
+        2: 27,  // Episodes 28-64
+        3: 64,  // Episodes 65-98
+        4: 98,  // Episodes 99-130
+        5: 130, // Episodes 131-164
+        6: 164  // Episodes 165+
     },
-    'kurulus-orhan': {
-        1: 0
-    },
-    'mehmed-fetihler-sultani': {
-        1: 0,
-        2: 26,  // Verify: Season 2 starts at episode 27
-        3: 52   // Verify: Season 3 starts at episode 53
-    },
-    'salahuddin-ayyubi': {
-        1: 0,
-        2: 30   // Verify actual count for season 1
-    },
-    'mevlana-rumi': {
-        1: 0,
-        2: 18,  // Verify actual count
-        3: 36   // Verify actual count
-    },
-    'alparslan-buyuk-selcuklu': {
-        1: 0,
-        2: 27   // Verify actual count for season 1
-    },
-    'payitaht-abdulhamid': {
-        1: 0,
-        2: 26,
-        3: 52,
-        4: 78,
-        5: 104
-    },
-    'destan': {
-        1: 0
-    }
+    'kurulus-orhan': { 1: 0 },
+    'mehmed-fetihler-sultani': { 1: 0, 2: 26, 3: 52 },
+    'salahuddin-ayyubi': { 1: 0, 2: 30 },
+    'mevlana-rumi': { 1: 0, 2: 18, 3: 36 },
+    'alparslan-buyuk-selcuklu': { 1: 0, 2: 27 },
+    'payitaht-abdulhamid': { 1: 0, 2: 26, 3: 52, 4: 78, 5: 104 },
+    'destan': { 1: 0 },
+    'dirilis-ertugrul': { 1: 0, 2: 76, 3: 126, 4: 176, 5: 226 }, // Approximate
+    'barbaroslar-akdenizin-kilici': { 1: 0, 2: 31 },
+    'uyanis-buyuk-selcuklu': { 1: 0, 2: 34 }
 };
 
-// Series name mapping (OsmanOnline slug -> KayiFamily slug)
 const SERIES_NAME_MAP = {
     'watch-kurulus-osman-with-english-subtitles': 'kurulus-osman',
     'watch-kurulus-orhan-with-english-subtitles': 'kurulus-orhan',
@@ -62,168 +45,295 @@ const SERIES_NAME_MAP = {
     'watch-uyanis-buyuk-selcuklu-with-english-subtitles': 'uyanis-buyuk-selcuklu'
 };
 
-/**
- * Convert season-relative episode number to absolute episode number
- * @param {string} seriesSlug - Series slug (KayiFamily format)
- * @param {number} season - Season number
- * @param {number} episode - Episode number within season
- * @returns {number} - Absolute episode number
- */
 function toAbsoluteEpisode(seriesSlug, season, episode) {
     const offsets = SEASON_OFFSETS[seriesSlug];
     if (!offsets || !offsets[season]) {
-        // If we don't have offsets, assume absolute = season * 100 + episode
-        // This is a fallback and may not be accurate
         return (season - 1) * 100 + episode;
     }
     return offsets[season] + episode;
 }
 
-/**
- * Build KayiFamily episode URLs to try
- * @param {string} seriesSlug - Series slug (KayiFamily format)
- * @param {number} season - Season number
- * @param {number} absoluteEp - Absolute episode number
- * @returns {string[]} - Array of URLs to try
- */
-function buildKayiFamilyUrls(seriesSlug, season, absoluteEp) {
+function buildKayiFamilyUrls(seriesSlug, season, absoluteEp, seasonEp) {
     const urls = [];
     
-    // Pattern 1: Season-specific format (newer episodes)
-    // e.g., /kurulus-osman-season-6-episode-193/
+    // IMPORTANT: KayiFamily uses DIFFERENT numbering for different series/seasons
+    // Recent episodes (Season 4+ typically) use SEASON-RELATIVE numbers
+    // Older episodes use ABSOLUTE numbers
+    
+    // Pattern 1: Season-specific format with SEASON-RELATIVE episode number
+    // This works for recent episodes (e.g., /kurulus-osman-season-6-episode-193/)
+    urls.push(`https://kayifamily.com/${seriesSlug}-season-${season}-episode-${seasonEp}/`);
+    
+    // Pattern 2: Season-specific format with ABSOLUTE episode number
+    // Fallback for some series
     urls.push(`https://kayifamily.com/${seriesSlug}-season-${season}-episode-${absoluteEp}/`);
     
-    // Pattern 2: Absolute format (older episodes)
-    // e.g., /kurulus-osman-episode-194-season-finale/
+    // Pattern 3: Absolute format (older episodes)
     urls.push(`https://kayifamily.com/${seriesSlug}-episode-${absoluteEp}/`);
     
-    // Pattern 3: With english subtitles suffix
+    // Pattern 4: With english subtitles suffix
     urls.push(`https://kayifamily.com/${seriesSlug}-episode-${absoluteEp}-in-english-subtitles/`);
     
-    // Pattern 4: Alternative naming for some series
+    // Pattern 5: Season finale variant (absolute)
+    urls.push(`https://kayifamily.com/${seriesSlug}-episode-${absoluteEp}-season-finale/`);
+    
+    // Pattern 6: Season finale variant (season-relative)
+    urls.push(`https://kayifamily.com/${seriesSlug}-episode-${seasonEp}-season-finale/`);
+    
+    // Special cases
     if (seriesSlug === 'payitaht-abdulhamid') {
+        urls.push(`https://kayifamily.com/payitaht-sultan-abdul-hamid-season-${season}-episode-${seasonEp}/`);
         urls.push(`https://kayifamily.com/payitaht-sultan-abdul-hamid-season-${season}-episode-${absoluteEp}/`);
-    }
-    if (seriesSlug === 'salahuddin-ayyubi') {
-        urls.push(`https://kayifamily.com/salahuddin-ayyubi-season-${season}-episode-${absoluteEp}/`);
     }
     
     return urls;
 }
 
 /**
- * Extract stream from vidara.to
- * @param {string} filecode - Vidara file code
- * @returns {Promise<Object|null>} - Stream info or null
+ * Extract stream from bestb.stream iframe
+ * These are direct video URLs that might need proxying
  */
-async function extractVidaraStream(filecode) {
+async function extractBestbStream(iframeUrl) {
     try {
-        const apiUrl = `https://vidara.to/api/stream?filecode=${filecode}`;
+        log(`Extracting from bestb.stream: ${iframeUrl}`);
         
-        const response = await axios.get(apiUrl, {
+        // Fetch the iframe page
+        const { data } = await axios.get(iframeUrl, {
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                'Referer': 'https://kayifamily.com/',
-                'Accept': 'application/json'
+                'Referer': 'https://kayifamily.com/'
             },
             timeout: 10000
         });
         
-        if (response.data && response.data.streaming_url) {
+        // Look for m3u8 URL
+        const m3u8Match = data.match(/(https?:\/\/[^\s"'<>]+\.m3u8[^\s"'<>]*)/);
+        if (m3u8Match) {
+            log(`Found M3U8 in bestb: ${m3u8Match[1]}`);
             return {
-                url: response.data.streaming_url,
-                title: response.data.title || 'KayiFamily Stream',
+                url: m3u8Match[1],
                 type: 'hls',
-                source: 'kayifamily'
+                source: 'kayifamily-bestb'
             };
         }
         
+        // Look for video tag
+        const videoMatch = data.match(/<video[^>]+src="([^"]+)"/);
+        if (videoMatch) {
+            log(`Found video src: ${videoMatch[1]}`);
+            return {
+                url: videoMatch[1],
+                type: 'mp4',
+                source: 'kayifamily-bestb'
+            };
+        }
+        
+        log('No stream found in bestb page');
         return null;
     } catch (error) {
-        console.error(`Vidara extraction error: ${error.message}`);
+        log(`Bestb extraction error: ${error.message}`);
         return null;
     }
 }
 
 /**
- * Get stream from KayiFamily for a specific episode
- * @param {string} osmanSeriesSlug - Series slug from OsmanOnline (e.g., 'watch-kurulus-osman-with-english-subtitles')
- * @param {number} season - Season number
- * @param {number} episode - Episode number
- * @returns {Promise<Object|null>} - Stream info or null
+ * Extract stream from kayihome.xyz iframe
+ * This is a complex player that requires special handling
  */
-async function getKayiFamilyStream(osmanSeriesSlug, season, episode) {
+async function extractKayihomeStream(iframeUrl) {
     try {
-        // Map OsmanOnline series name to KayiFamily format
-        const kayiSeriesSlug = SERIES_NAME_MAP[osmanSeriesSlug];
+        log(`Extracting from kayihome: ${iframeUrl}`);
         
-        if (!kayiSeriesSlug) {
-            console.log(`No KayiFamily mapping for series: ${osmanSeriesSlug}`);
+        // Extract data parameter
+        const dataMatch = iframeUrl.match(/data=([a-f0-9]+)/);
+        if (!dataMatch) {
+            log('No data parameter found in kayihome URL');
             return null;
         }
         
-        // Calculate absolute episode number
+        const dataParam = dataMatch[1];
+        
+        // Try the API endpoint
+        const apiUrl = `https://kayihome.xyz/player/api.php?data=${dataParam}&do=getVideo`;
+        log(`Trying API: ${apiUrl}`);
+        
+        const response = await axios.get(apiUrl, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Referer': 'https://kayifamily.com/',
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            timeout: 10000
+        });
+        
+        log(`API response: ${JSON.stringify(response.data).substring(0, 200)}`);
+        
+        // Check if response contains a URL
+        if (response.data && typeof response.data === 'string' && response.data.startsWith('http')) {
+            log(`Found direct URL from API: ${response.data}`);
+            return {
+                url: response.data,
+                type: 'hls',
+                source: 'kayifamily-kayihome'
+            };
+        }
+        
+        // Try to fetch the player page to look for embedded stream URL
+        const { data: playerData } = await axios.get(iframeUrl, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Referer': 'https://kayifamily.com/'
+            },
+            timeout: 10000
+        });
+        
+        // Look for m3u8 in the player page
+        const m3u8Match = playerData.match(/(https?:\/\/[^\s"'<>]+\.m3u8[^\s"'<>]*)/);
+        if (m3u8Match) {
+            log(`Found M3U8 in player: ${m3u8Match[1]}`);
+            return {
+                url: m3u8Match[1],
+                type: 'hls',
+                source: 'kayifamily-kayihome'
+            };
+        }
+        
+        // Look for sources array in JavaScript
+        const sourcesMatch = playerData.match(/sources\s*:\s*\[\s*\{[^}]*file\s*:\s*["']([^"']+)["']/);
+        if (sourcesMatch) {
+            log(`Found sources in JS: ${sourcesMatch[1]}`);
+            return {
+                url: sourcesMatch[1],
+                type: 'hls',
+                source: 'kayifamily-kayihome'
+            };
+        }
+        
+        log('No stream found in kayihome page');
+        return null;
+    } catch (error) {
+        log(`Kayihome extraction error: ${error.message}`);
+        return null;
+    }
+}
+
+async function getKayiFamilyStream(osmanSeriesSlug, season, episode) {
+    try {
+        const kayiSeriesSlug = SERIES_NAME_MAP[osmanSeriesSlug];
+        
+        if (!kayiSeriesSlug) {
+            log(`No KayiFamily mapping for series: ${osmanSeriesSlug}`);
+            return null;
+        }
+        
         const absoluteEp = toAbsoluteEpisode(kayiSeriesSlug, season, episode);
         
-        console.log(`Looking for ${kayiSeriesSlug} S${season}E${episode} = absolute episode ${absoluteEp}`);
+        log(`Looking for ${kayiSeriesSlug} S${season}E${episode} (absolute: ${absoluteEp})`);
         
-        // Build URLs to try
-        const urls = buildKayiFamilyUrls(kayiSeriesSlug, season, absoluteEp);
+        // Pass both absolute and season-relative episode numbers
+        const urls = buildKayiFamilyUrls(kayiSeriesSlug, season, absoluteEp, episode);
         
-        // Try each URL pattern
         for (const url of urls) {
             try {
-                console.log(`Trying: ${url}`);
+                log(`Trying: ${url}`);
                 
-                const { data } = await axios.get(url, {
+                const { data, status } = await axios.get(url, {
                     headers: {
                         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
                     },
-                    timeout: 15000
+                    timeout: 15000,
+                    validateStatus: () => true
                 });
                 
-                const $ = cheerio.load(data);
+                if (status !== 200) {
+                    log(`URL returned status ${status}`);
+                    continue;
+                }
                 
-                // Look for vidara.to iframe
+                // Check if this is a valid episode page by looking for video iframes
+                // Note: Don't rely on "404" text as it appears in sidebars/footers of valid pages too
+                const hasVideoContent = data.includes('bestb.stream') || 
+                                       data.includes('kayihome.xyz') || 
+                                       data.includes('vidara.to');
+                
+                if (!hasVideoContent) {
+                    log('No video content found on page (404 or no video)');
+                    continue;
+                }
+                
+                const $ = cheerio.load(data);
+                const title = $('title').text();
+                log(`Page title: ${title}`);
+                
+                // Check for valid episode page
+                if (!title.toLowerCase().includes('episode') && !title.toLowerCase().includes(kayiSeriesSlug.replace(/-/g, ' '))) {
+                    log('Not a valid episode page');
+                    continue;
+                }
+                
+                // Look for bestb.stream iframe (primary source)
+                const bestbIframe = $('iframe[src*="bestb.stream"]').attr('src');
+                if (bestbIframe) {
+                    log(`Found bestb.stream iframe: ${bestbIframe}`);
+                    const stream = await extractBestbStream(bestbIframe);
+                    if (stream) {
+                        log('Successfully extracted from bestb.stream');
+                        return stream;
+                    }
+                }
+                
+                // Look for kayihome.xyz iframe (secondary source)
+                const kayihomeIframe = $('iframe[src*="kayihome.xyz"]').attr('src');
+                if (kayihomeIframe) {
+                    log(`Found kayihome.xyz iframe: ${kayihomeIframe}`);
+                    const stream = await extractKayihomeStream(kayihomeIframe);
+                    if (stream) {
+                        log('Successfully extracted from kayihome.xyz');
+                        return stream;
+                    }
+                }
+                
+                // Look for vidara.to (legacy, might still exist on some pages)
                 const vidaraIframe = $('iframe[src*="vidara.to"]').attr('src');
                 if (vidaraIframe) {
-                    console.log(`Found vidara iframe: ${vidaraIframe}`);
-                    
-                    // Extract filecode from URL like https://vidara.to/e/X2HoeUbaZlgUU
+                    log(`Found vidara.to iframe (legacy): ${vidaraIframe}`);
                     const filecodeMatch = vidaraIframe.match(/vidara\.to\/e\/([a-zA-Z0-9]+)/);
                     if (filecodeMatch) {
-                        const filecode = filecodeMatch[1];
-                        const streamInfo = await extractVidaraStream(filecode);
-                        
-                        if (streamInfo) {
-                            console.log(`Successfully extracted KayiFamily stream`);
-                            return streamInfo;
+                        const apiUrl = `https://vidara.to/api/stream?filecode=${filecodeMatch[1]}`;
+                        try {
+                            const response = await axios.get(apiUrl, {
+                                headers: {
+                                    'User-Agent': 'Mozilla/5.0',
+                                    'Referer': 'https://kayifamily.com/'
+                                },
+                                timeout: 10000
+                            });
+                            if (response.data && response.data.streaming_url) {
+                                return {
+                                    url: response.data.streaming_url,
+                                    type: 'hls',
+                                    source: 'kayifamily-vidara'
+                                };
+                            }
+                        } catch (e) {
+                            log(`Vidara API error: ${e.message}`);
                         }
                     }
                 }
                 
-                // Also check for other video sources
-                const otherIframe = $('iframe[src*="kayihome.xyz"]').attr('src');
-                if (otherIframe) {
-                    console.log(`Found kayihome iframe (not implemented): ${otherIframe}`);
-                    // Could implement kayihome extraction here if needed
-                }
+                log('No video iframe found on this page');
                 
             } catch (error) {
-                if (error.response && error.response.status === 404) {
-                    console.log(`URL not found: ${url}`);
-                } else {
-                    console.log(`Error fetching ${url}: ${error.message}`);
-                }
-                continue; // Try next URL pattern
+                log(`Error fetching ${url}: ${error.message}`);
+                continue;
             }
         }
         
-        console.log(`Could not find KayiFamily stream for ${kayiSeriesSlug} S${season}E${episode}`);
+        log(`Could not find KayiFamily stream for ${kayiSeriesSlug} S${season}E${episode}`);
         return null;
         
     } catch (error) {
-        console.error(`KayiFamily stream error: ${error.message}`);
+        log(`KayiFamily stream error: ${error.message}`);
         return null;
     }
 }
