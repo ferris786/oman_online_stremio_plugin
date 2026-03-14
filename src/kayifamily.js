@@ -217,6 +217,72 @@ async function extractKayihomeStream(iframeUrl) {
     }
 }
 
+/**
+ * Extract stream from strmup.to iframe
+ * strmup.to is similar to bestb.stream - iframe contains direct m3u8
+ */
+async function extractStrmupStream(iframeUrl) {
+    try {
+        log(`Extracting from strmup.to: ${iframeUrl}`);
+        
+        const { data, status } = await axios.get(iframeUrl, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Referer': 'https://kayifamily.com/',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+            },
+            timeout: 10000,
+            validateStatus: () => true
+        });
+        
+        // Check for 521 error (Cloudflare origin down)
+        if (status === 521 || data.includes('521') || data.includes('Web server is down')) {
+            log('strmup.to server is down (521)');
+            return null;
+        }
+        
+        // Look for m3u8 URL
+        const m3u8Match = data.match(/(https?:\/\/[^\s"'<>]+\.m3u8[^\s"'<>]*)/);
+        if (m3u8Match) {
+            log(`Found m3u8: ${m3u8Match[1]}`);
+            return {
+                url: m3u8Match[1],
+                type: 'hls',
+                source: 'kayifamily-strmup'
+            };
+        }
+        
+        // Look for video tag source
+        const videoMatch = data.match(/<video[^>]+src=["']([^"']+)["']/);
+        if (videoMatch) {
+            log(`Found video src: ${videoMatch[1]}`);
+            return {
+                url: videoMatch[1],
+                type: 'hls',
+                source: 'kayifamily-strmup'
+            };
+        }
+        
+        // Look for sources in JavaScript
+        const sourcesMatch = data.match(/sources\s*:\s*\[\s*\{[^}]*file\s*:\s*["']([^"']+)["']/);
+        if (sourcesMatch) {
+            log(`Found sources in JS: ${sourcesMatch[1]}`);
+            return {
+                url: sourcesMatch[1],
+                type: 'hls',
+                source: 'kayifamily-strmup'
+            };
+        }
+        
+        log('No stream found in strmup.to page');
+        return null;
+        
+    } catch (error) {
+        log(`Strmup extraction error: ${error.message}`);
+        return null;
+    }
+}
+
 async function getKayiFamilyStream(osmanSeriesSlug, season, episode) {
     try {
         const kayiSeriesSlug = SERIES_NAME_MAP[osmanSeriesSlug];
@@ -254,7 +320,8 @@ async function getKayiFamilyStream(osmanSeriesSlug, season, episode) {
                 // Note: Don't rely on "404" text as it appears in sidebars/footers of valid pages too
                 const hasVideoContent = data.includes('bestb.stream') || 
                                        data.includes('kayihome.xyz') || 
-                                       data.includes('vidara.to');
+                                       data.includes('vidara.to') ||
+                                       data.includes('strmup.to');
                 
                 if (!hasVideoContent) {
                     log('No video content found on page (404 or no video)');
@@ -289,6 +356,17 @@ async function getKayiFamilyStream(osmanSeriesSlug, season, episode) {
                     const stream = await extractKayihomeStream(kayihomeIframe);
                     if (stream) {
                         log('Successfully extracted from kayihome.xyz');
+                        return stream;
+                    }
+                }
+                
+                // Look for strmup.to (newer CDN)
+                const strmupIframe = $('iframe[src*="strmup.to"]').attr('src');
+                if (strmupIframe) {
+                    log(`Found strmup.to iframe: ${strmupIframe}`);
+                    const stream = await extractStrmupStream(strmupIframe);
+                    if (stream) {
+                        log('Successfully extracted from strmup.to');
                         return stream;
                     }
                 }
