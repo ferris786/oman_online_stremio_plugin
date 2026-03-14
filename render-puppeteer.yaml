@@ -1,0 +1,46 @@
+# Render.com deployment configuration for Stremio addon with Puppeteer support
+services:
+  - type: web
+    name: oman-online-stremio
+    runtime: node
+    plan: free
+    
+    buildCommand: |
+      npm install
+      # Install Chrome for Puppeteer
+      npx puppeteer browsers install chrome
+    
+    startCommand: node src/index.js
+    
+    envVars:
+      - key: NODE_ENV
+        value: production
+      
+      # Enable Puppeteer for kayihome.xyz extraction
+      - key: USE_PUPPETEER
+        value: "true"
+      
+      # Optional: Chrome executable path (usually auto-detected)
+      # Uncomment if Chrome is not found automatically
+      # - key: PUPPETEER_EXECUTABLE_PATH
+      #   value: /opt/render/.cache/puppeteer/chrome/linux-*/chrome-linux/chrome
+      
+      # Optional: Enable debug logging (set to "true" for troubleshooting)
+      - key: DEBUG
+        value: "false"
+      
+      # Mark as Render environment for optimizations
+      - key: RENDER
+        value: "true"
+    
+    # Health check path (adjust if your addon has a different health endpoint)
+    healthCheckPath: /manifest.json
+    
+    # Auto-deploy on git push
+    autoDeploy: true
+
+# Optional: Disk for caching (limited on free tier)
+disks:
+  - name: cache
+    mountPath: /cache
+    sizeGB: 0.5

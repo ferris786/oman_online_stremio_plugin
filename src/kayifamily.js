@@ -1,5 +1,6 @@
 const axios = require("axios");
 const cheerio = require("cheerio");
+const { okru, vk } = require("./extractors");
 
 // Enable debug logging
 const DEBUG = true;
@@ -485,6 +486,48 @@ async function getKayiFamilyStream(osmanSeriesSlug, season, episode) {
                     if (stream) {
                         log('Successfully extracted from kayihome.xyz');
                         return stream;
+                    }
+                }
+                
+                // 5. Look for OK.ru embeds
+                const okruIframe = $('iframe[src*="ok.ru"]').attr('src');
+                if (okruIframe) {
+                    log(`Found OK.ru iframe: ${okruIframe}`);
+                    const videoId = okru.parseVideoId(okruIframe);
+                    if (videoId) {
+                        const stream = await okru.getStremioStream(videoId, 'hd');
+                        if (stream) {
+                            log('Successfully extracted from OK.ru');
+                            return {
+                                url: stream.url,
+                                type: 'mp4',
+                                source: 'kayifamily-okru',
+                                title: stream.title,
+                                behaviorHints: stream.behaviorHints
+                            };
+                        }
+                    }
+                }
+                
+                // 6. Look for VK.com embeds
+                const vkIframe = $('iframe[src*="vk.com"], iframe[src*="vkvideo.ru"]').attr('src');
+                if (vkIframe) {
+                    log(`Found VK iframe: ${vkIframe}`);
+                    const parsed = vk.parseVideoUrl(vkIframe);
+                    if (parsed) {
+                        const hashMatch = vkIframe.match(/hash=([a-f0-9]+)/);
+                        const hash = hashMatch ? hashMatch[1] : '';
+                        const stream = await vk.getStremioStream(parsed.ownerId, parsed.videoId, hash, '720p');
+                        if (stream) {
+                            log('Successfully extracted from VK.com');
+                            return {
+                                url: stream.url,
+                                type: stream.url.includes('.m3u8') ? 'hls' : 'mp4',
+                                source: 'kayifamily-vk',
+                                title: stream.title,
+                                behaviorHints: stream.behaviorHints
+                            };
+                        }
                     }
                 }
                 

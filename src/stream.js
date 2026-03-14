@@ -322,8 +322,15 @@ async function getStream(type, id) {
                 name: "KayiFamilyTV",
                 title: "Source 3: KayiFamilyTV (Ok.ru - very reliable)",
                 url: kayiTVStream.url,
+                // Ok.ru URLs require referer header to play
                 behaviorHints: {
-                    notWebReady: true
+                    notWebReady: true,
+                    proxyHeaders: {
+                        request: {
+                            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                            "Referer": "https://ok.ru/"
+                        }
+                    }
                 }
             });
             log("Added KayiFamilyTV stream");

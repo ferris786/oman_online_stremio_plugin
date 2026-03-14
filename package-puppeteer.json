@@ -5,24 +5,27 @@
   "scripts": {
     "start": "node src/index.js",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "test-kayihome": "node test-kayihome.js"
+    "test:puppeteer": "node src/puppeteer-extractor.js",
+    "install:chrome": "npx puppeteer browsers install chrome"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "description": "",
+  "description": "Stremio addon with Puppeteer support for extracting streams from protected sites",
   "dependencies": {
     "axios": "^1.13.2",
     "cheerio": "^1.1.2",
     "cors": "^2.8.5",
     "crypto-js": "^4.2.0",
     "express": "^5.2.1",
+    "node-cache": "^5.1.2",
+    "p-limit": "^3.1.0",
     "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-adblocker": "^0.6.3",
     "puppeteer-extra-plugin-stealth": "^2.11.2",
     "stremio-addon-sdk": "^1.6.10"
   },
-  "optionalDependencies": {
-    "playwright-extra": "^1.0.0",
-    "playwright-extra-plugin-stealth": "^1.0.0"
+  "engines": {
+    "node": ">=18.0.0"
   }
 }
