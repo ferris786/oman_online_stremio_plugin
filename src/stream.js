@@ -194,14 +194,25 @@ async function getStream(type, id) {
                 const proxyUrl = `${proxyHost}/proxy?url=${encodeURIComponent(finalStreamUrl)}&cookie=${encodeURIComponent(cookieHeader || "")}&.m3u8`;
                 log("Returning Proxy URL");
 
+                // Return TWO stream options:
+                // 1. Native player (may have AC3 audio issues on some Android TVs)
+                // 2. External player option (VLC - better codec support)
                 return {
                     streams: [
                         {
                             name: "HLS Stream",
-                            title: "Turkish Series (Use 'External Player' if no audio)",
+                            title: "Play with Stremio (may have audio issues on TV)",
                             url: proxyUrl,
                             behaviorHints: {
                                 notWebReady: true
+                            }
+                        },
+                        {
+                            name: "HLS Stream (External Player)",
+                            title: "Play with VLC (fixes audio issues)",
+                            url: proxyUrl,
+                            behaviorHints: {
+                                notWebReady: false  // Allows external player selection
                             }
                         }
                     ]
@@ -217,13 +228,21 @@ async function getStream(type, id) {
                 const proxyUrl = `${proxyHost}/proxy?url=${encodeURIComponent(finalStreamUrl)}&cookie=${encodeURIComponent(cookieHeader || "")}&.m3u8`;
                 log("Returning Proxy URL (Fallback)");
 
+                // Return TWO stream options for fallback too
                 return {
                     streams: [
                         {
-                            title: "Auto (HLS) [Proxy]",
+                            title: "Play with Stremio (may have audio issues on TV)",
                             url: proxyUrl,
                             behaviorHints: {
                                 notWebReady: true
+                            }
+                        },
+                        {
+                            title: "Play with VLC (fixes audio issues)",
+                            url: proxyUrl,
+                            behaviorHints: {
+                                notWebReady: false
                             }
                         }
                     ]
@@ -253,13 +272,21 @@ async function getStream(type, id) {
                 const proxyHost = process.env.RENDER_EXTERNAL_URL || `http://127.0.0.1:${process.env.PORT || 7000}`;
                 const proxyUrl = `${proxyHost}/proxy?url=${encodeURIComponent(streamUrl)}&headers=${encodeURIComponent(JSON.stringify({ "Referer": "https://streamify360.com/" }))}&.m3u8`;
 
+                // Return TWO stream options for Streamify360 too
                 return {
                     streams: [
                         {
-                            title: "Streamify360 [Proxy]",
+                            title: "Streamify360 - Play with Stremio",
                             url: proxyUrl,
                             behaviorHints: {
                                 notWebReady: true
+                            }
+                        },
+                        {
+                            title: "Streamify360 - Play with VLC",
+                            url: proxyUrl,
+                            behaviorHints: {
+                                notWebReady: false
                             }
                         }
                     ]
