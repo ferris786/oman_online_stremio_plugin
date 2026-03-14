@@ -424,43 +424,12 @@ async function getKayiFamilyStream(osmanSeriesSlug, season, episode) {
                     continue;
                 }
                 
-                // Look for bestb.stream iframe (primary source)
-                const bestbIframe = $('iframe[src*="bestb.stream"]').attr('src');
-                if (bestbIframe) {
-                    log(`Found bestb.stream iframe: ${bestbIframe}`);
-                    const stream = await extractBestbStream(bestbIframe);
-                    if (stream) {
-                        log('Successfully extracted from bestb.stream');
-                        return stream;
-                    }
-                }
+                // PRIORITY ORDER: Most reliable sources first
                 
-                // Look for kayihome.xyz iframe (secondary source)
-                const kayihomeIframe = $('iframe[src*="kayihome.xyz"]').attr('src');
-                if (kayihomeIframe) {
-                    log(`Found kayihome.xyz iframe: ${kayihomeIframe}`);
-                    const stream = await extractKayihomeStream(kayihomeIframe);
-                    if (stream) {
-                        log('Successfully extracted from kayihome.xyz');
-                        return stream;
-                    }
-                }
-                
-                // Look for strmup.to (newer CDN)
-                const strmupIframe = $('iframe[src*="strmup.to"]').attr('src');
-                if (strmupIframe) {
-                    log(`Found strmup.to iframe: ${strmupIframe}`);
-                    const stream = await extractStrmupStream(strmupIframe);
-                    if (stream) {
-                        log('Successfully extracted from strmup.to');
-                        return stream;
-                    }
-                }
-                
-                // Look for vidara.to (legacy, might still exist on some pages)
+                // 1. Look for vidara.to (MOST RELIABLE - Always try first!)
                 const vidaraIframe = $('iframe[src*="vidara.to"]').attr('src');
                 if (vidaraIframe) {
-                    log(`Found vidara.to iframe (legacy): ${vidaraIframe}`);
+                    log(`Found vidara.to iframe: ${vidaraIframe}`);
                     const filecodeMatch = vidaraIframe.match(/vidara\.to\/e\/([a-zA-Z0-9]+)/);
                     if (filecodeMatch) {
                         const apiUrl = `https://vidara.to/api/stream?filecode=${filecodeMatch[1]}`;
@@ -473,6 +442,7 @@ async function getKayiFamilyStream(osmanSeriesSlug, season, episode) {
                                 timeout: 10000
                             });
                             if (response.data && response.data.streaming_url) {
+                                log('Successfully extracted from vidara.to');
                                 return {
                                     url: response.data.streaming_url,
                                     type: 'hls',
@@ -482,6 +452,39 @@ async function getKayiFamilyStream(osmanSeriesSlug, season, episode) {
                         } catch (e) {
                             log(`Vidara API error: ${e.message}`);
                         }
+                    }
+                }
+                
+                // 2. Look for strmup.to (when online)
+                const strmupIframe = $('iframe[src*="strmup.to"]').attr('src');
+                if (strmupIframe) {
+                    log(`Found strmup.to iframe: ${strmupIframe}`);
+                    const stream = await extractStrmupStream(strmupIframe);
+                    if (stream) {
+                        log('Successfully extracted from strmup.to');
+                        return stream;
+                    }
+                }
+                
+                // 3. Look for bestb.stream (when online)
+                const bestbIframe = $('iframe[src*="bestb.stream"]').attr('src');
+                if (bestbIframe) {
+                    log(`Found bestb.stream iframe: ${bestbIframe}`);
+                    const stream = await extractBestbStream(bestbIframe);
+                    if (stream) {
+                        log('Successfully extracted from bestb.stream');
+                        return stream;
+                    }
+                }
+                
+                // 4. Look for kayihome.xyz (least reliable - often returns 404)
+                const kayihomeIframe = $('iframe[src*="kayihome.xyz"]').attr('src');
+                if (kayihomeIframe) {
+                    log(`Found kayihome.xyz iframe: ${kayihomeIframe}`);
+                    const stream = await extractKayihomeStream(kayihomeIframe);
+                    if (stream) {
+                        log('Successfully extracted from kayihome.xyz');
+                        return stream;
                     }
                 }
                 
