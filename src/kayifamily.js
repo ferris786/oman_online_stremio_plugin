@@ -138,7 +138,32 @@ async function extractBestbStream(iframeUrl) {
 
 /**
  * Extract stream from kayihome.xyz iframe
- * This is a complex player that requires special handling
+ * 
+ * RESEARCH FINDINGS (March 2026):
+ * 
+ * Turktvuk vs Kayihome - Key Differences:
+ * 
+ * 1. API Approach:
+ *    - Turktvuk: POST /player/index.php?data=HASH&do=getVideo returns JSON
+ *    - Kayihome: GET /player/api.php?data=HASH&do=getVideo returns "url is empty"
+ * 
+ * 2. Video Data Location:
+ *    - Turktvuk: API response contains videoSource, securedLink, ck key
+ *    - Kayihome: Video URL embedded directly in player page HTML in fireload() function
+ * 
+ * 3. URL Structure:
+ *    - Turktvuk: https://turktvuk.com/cdn/hls/HASH/master.m3u8?md5=...&expires=...
+ *    - Kayihome: https://{host}.xyz/cdn/hls/HASH/master.txt
+ *      Hosts: reabc.xyz, aeabc.xyz, eeabc.xyz, keabc.xyz, teabc.xyz
+ * 
+ * 4. Authentication:
+ *    - Turktvuk: Requires cookies (fireplayer_player), POST with hash & referer
+ *    - Kayihome: No cookies needed, direct URL from HTML
+ * 
+ * Why Kayihome API returns "url is empty":
+ * - The API endpoint is either legacy or not implemented
+ * - Video data is server-side rendered into the HTML page
+ * - Client-side JavaScript (FirePlayer) reads the embedded config
  */
 async function extractKayihomeStream(iframeUrl) {
     try {
@@ -153,60 +178,121 @@ async function extractKayihomeStream(iframeUrl) {
         
         const dataParam = dataMatch[1];
         
-        // Try the API endpoint
-        const apiUrl = `https://kayihome.xyz/player/api.php?data=${dataParam}&do=getVideo`;
-        log(`Trying API: ${apiUrl}`);
+        // METHOD 1: Parse HTML page source (PRIMARY - This works!)
+        // Kayihome embeds video config in the fireload() function
+        log('Trying HTML parsing method...');
         
-        const response = await axios.get(apiUrl, {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                'Referer': 'https://kayifamily.com/',
-                'X-Requested-With': 'XMLHttpRequest'
-            },
-            timeout: 10000
-        });
-        
-        log(`API response: ${JSON.stringify(response.data).substring(0, 200)}`);
-        
-        // Check if response contains a URL
-        if (response.data && typeof response.data === 'string' && response.data.startsWith('http')) {
-            log(`Found direct URL from API: ${response.data}`);
-            return {
-                url: response.data,
-                type: 'hls',
-                source: 'kayifamily-kayihome'
-            };
+        try {
+            const playerUrl = `https://kayihome.xyz/player/index.php?data=${dataParam}`;
+            const { data: html } = await axios.get(playerUrl, {
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                    'Referer': 'https://kayifamily.com/'
+                },
+                timeout: 10000,
+                validateStatus: () => true
+            });
+            
+            // Check if page actually returned a 404 or no_video page (not just in JS code)
+            // Note: no_video.html appears in devtools detection script, so check title or actual content
+            const titleMatch = html.match(/<title>([^<]+)/i);
+            const pageTitle = titleMatch ? titleMatch[1].toLowerCase() : '';
+            
+            if (html.includes('404 Not Found') || 
+                pageTitle.includes('404') || 
+                pageTitle.includes('not found') ||
+                (html.includes('no_video.html') && html.includes('No Video Available')) ||
+                html.includes('<h1>No Video Found</h1>')) {
+                log('Kayihome player shows no video available');
+                return null;
+            }
+            
+            // Extract videoUrl from fireload function
+            // Format: "videoUrl":"\/cdn\/hls\/HASH\/master.txt"
+            const videoUrlMatch = html.match(/"videoUrl"\s*:\s*"([^"]+)"/);
+            if (videoUrlMatch) {
+                const videoUrl = videoUrlMatch[1].replace(/\\\//g, '/');
+                log(`Found videoUrl: ${videoUrl}`);
+                
+                // Extract hostList for available hosts
+                // Format: "hostList":{"1":["reabc.xyz","aeabc.xyz",...]}
+                const hostListMatch = html.match(/"hostList"\s*:\s*\{[^}]+"1"\s*:\s*\[([^\]]+)\]/);
+                const hosts = [];
+                if (hostListMatch) {
+                    const hostMatches = hostListMatch[1].match(/"([^"]+\.xyz)"/g);
+                    if (hostMatches) {
+                        hostMatches.forEach(h => {
+                            hosts.push(h.replace(/"/g, ''));
+                        });
+                    }
+                }
+                
+                // Default hosts if parsing fails
+                if (hosts.length === 0) {
+                    hosts.push('reabc.xyz', 'aeabc.xyz', 'eeabc.xyz', 'keabc.xyz', 'teabc.xyz');
+                }
+                log(`Available hosts: ${hosts.join(', ')}`);
+                
+                // Construct full URL using first host
+                const fullUrl = `https://${hosts[0]}${videoUrl}`;
+                log(`Returning stream URL: ${fullUrl}`);
+                
+                return {
+                    url: fullUrl,
+                    type: 'hls',
+                    source: 'kayifamily-kayihome'
+                };
+            }
+        } catch (htmlError) {
+            log(`HTML parsing failed: ${htmlError.message}`);
         }
         
-        // Try to fetch the player page to look for embedded stream URL
-        const { data: playerData } = await axios.get(iframeUrl, {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                'Referer': 'https://kayifamily.com/'
-            },
-            timeout: 10000
-        });
+        // METHOD 2: Try API (FALLBACK - Likely won't work)
+        log('Trying API method (fallback)...');
         
-        // Look for m3u8 in the player page
-        const m3u8Match = playerData.match(/(https?:\/\/[^\s"'<>]+\.m3u8[^\s"'<>]*)/);
-        if (m3u8Match) {
-            log(`Found M3U8 in player: ${m3u8Match[1]}`);
-            return {
-                url: m3u8Match[1],
-                type: 'hls',
-                source: 'kayifamily-kayihome'
-            };
-        }
-        
-        // Look for sources array in JavaScript
-        const sourcesMatch = playerData.match(/sources\s*:\s*\[\s*\{[^}]*file\s*:\s*["']([^"']+)["']/);
-        if (sourcesMatch) {
-            log(`Found sources in JS: ${sourcesMatch[1]}`);
-            return {
-                url: sourcesMatch[1],
-                type: 'hls',
-                source: 'kayifamily-kayihome'
-            };
+        try {
+            const apiUrl = `https://kayihome.xyz/player/api.php?data=${dataParam}&do=getVideo`;
+            const response = await axios.post(apiUrl,
+                new URLSearchParams({
+                    hash: dataParam,
+                    r: 'https://kayifamily.com/'
+                }), {
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Origin': 'https://kayihome.xyz',
+                    'Referer': iframeUrl
+                },
+                timeout: 10000
+            });
+            
+            log(`API response: ${JSON.stringify(response.data).substring(0, 200)}`);
+            
+            // Check if response contains video data
+            if (response.data) {
+                if (typeof response.data === 'object') {
+                    if (response.data.videoSource || response.data.securedLink) {
+                        const streamUrl = response.data.securedLink || response.data.videoSource;
+                        log(`Found video URL from API: ${streamUrl}`);
+                        return {
+                            url: streamUrl,
+                            type: response.data.hls ? 'hls' : 'mp4',
+                            source: 'kayifamily-kayihome'
+                        };
+                    }
+                }
+                
+                if (typeof response.data === 'string' && response.data.startsWith('http')) {
+                    log(`Found direct URL from API: ${response.data}`);
+                    return {
+                        url: response.data,
+                        type: 'hls',
+                        source: 'kayifamily-kayihome'
+                    };
+                }
+            }
+        } catch (apiError) {
+            log(`API request failed: ${apiError.message}`);
         }
         
         log('No stream found in kayihome page');
