@@ -43,10 +43,33 @@ class SeriesActivity : Activity() {
     }
 
     private fun showSplash() {
-        splash.alpha = 1f
+        val img = findViewById<View>(R.id.splashImg)
+        val caption = findViewById<View>(R.id.splashText)
+
         splash.visibility = View.VISIBLE
-        val dismiss = Runnable { fadeSplash() }
-        splash.postDelayed(dismiss, 2600)
+        splash.alpha = 1f
+
+        // artwork fades in, then slow cinematic zoom (Ken Burns)
+        img.animate().alpha(1f).setDuration(600).start()
+        img.postDelayed({
+            img.animate()
+                .scaleX(1.09f).scaleY(1.09f)
+                .setDuration(4600)
+                .setInterpolator(DecelerateInterpolator())
+                .start()
+        }, 250)
+
+        // caption slides into the open sky a beat later
+        caption.translationY = -26f
+        caption.postDelayed({
+            caption.animate()
+                .alpha(1f).translationY(0f)
+                .setDuration(500)
+                .setInterpolator(DecelerateInterpolator())
+                .start()
+        }, 950)
+
+        splash.postDelayed({ fadeSplash() }, 3700)
         splash.setOnClickListener { fadeSplash() }
     }
 

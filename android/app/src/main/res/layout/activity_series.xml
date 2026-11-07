@@ -98,86 +98,62 @@
             android:paddingBottom="16dp" />
     </LinearLayout>
 
-    <!-- Splash overlay shown briefly on launch -->
+    <!-- Cinematic splash: full-bleed artwork (carries the WAHAB TV title),
+         slow Ken Burns zoom, caption in the open sky at top-right -->
     <FrameLayout
         android:id="@+id/splash"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:background="#0e0e12"
+        android:background="#000000"
         android:clickable="true"
         android:focusable="true">
 
         <ImageView
+            android:id="@+id/splashImg"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:scaleType="centerCrop"
+            android:alpha="0"
             android:src="@drawable/splash_bg"
             android:contentDescription="@string/app_name" />
 
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:background="@drawable/splash_scrim" />
-
         <LinearLayout
+            android:id="@+id/splashText"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_gravity="start|center_vertical"
-            android:layout_marginStart="90dp"
-            android:orientation="vertical">
+            android:layout_gravity="top|end"
+            android:layout_marginTop="56dp"
+            android:layout_marginEnd="72dp"
+            android:gravity="end"
+            android:orientation="vertical"
+            android:alpha="0">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="TURKISH SERIES"
+                android:textColor="#f2e6c9"
+                android:textSize="22sp"
+                android:letterSpacing="0.34"
+                android:shadowColor="#000000"
+                android:shadowRadius="10" />
 
             <View
-                android:layout_width="70dp"
-                android:layout_height="6dp"
-                android:layout_marginBottom="18dp"
+                android:layout_width="150dp"
+                android:layout_height="3dp"
+                android:layout_marginTop="10dp"
                 android:background="@color/accent" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="WAHAB"
-                android:textColor="@color/text"
-                android:textSize="86sp"
-                android:textStyle="bold"
-                android:letterSpacing="0.08"
-                android:shadowColor="#000000"
-                android:shadowRadius="12" />
-
-            <LinearLayout
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="TV"
-                    android:textColor="@color/accent"
-                    android:textSize="44sp"
-                    android:textStyle="bold"
-                    android:letterSpacing="0.08"
-                    android:shadowColor="#000000"
-                    android:shadowRadius="10" />
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginStart="18dp"
-                    android:text="TURKISH SERIES"
-                    android:textColor="@color/text_dim"
-                    android:textSize="18sp"
-                    android:letterSpacing="0.28" />
-            </LinearLayout>
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="26dp"
+                android:layout_marginTop="8dp"
                 android:text="by KMK"
-                android:textColor="@color/text_dim"
-                android:textSize="16sp"
-                android:letterSpacing="0.12" />
+                android:textColor="#c8c8cf"
+                android:textSize="15sp"
+                android:letterSpacing="0.16"
+                android:shadowColor="#000000"
+                android:shadowRadius="8" />
         </LinearLayout>
     </FrameLayout>
 </FrameLayout>
