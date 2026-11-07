@@ -1,6 +1,8 @@
 const express = require("express");
 const cors = require("cors");
 const axios = require("axios");
+const fs = require("fs");
+const path = require("path");
 const http = require("http");
 const https = require("https");
 
@@ -178,6 +180,20 @@ async function proxyHandler(req, res) {
 app.get("/proxy", proxyHandler);
 app.get("/proxy/:filename", proxyHandler);
 
+
+// Android TV app download - one easy link for the Downloader app on the TV:
+//   https://<this-addon>/apk
+// The APK is built from android/ (see android/README.md) and committed here,
+// so this link always serves the latest committed build.
+const APK_PATH = path.join(__dirname, "../android/apk/turkishtv.apk");
+app.get(["/apk", "/app.apk"], (req, res) => {
+    if (!fs.existsSync(APK_PATH)) {
+        return res.status(404).send("APK not built - see android/README.md");
+    }
+    res.setHeader("Content-Type", "application/vnd.android.package-archive");
+    res.setHeader("Content-Disposition", 'attachment; filename="turkishtv.apk"');
+    res.sendFile(APK_PATH);
+});
 
 // ---------------------------------------------------------------------------
 // xtremestream (osmanonline.live) VOD pipeline: materialize HLS playlists and
