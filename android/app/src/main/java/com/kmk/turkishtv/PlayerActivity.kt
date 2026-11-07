@@ -3,6 +3,7 @@ package com.kmk.turkishtv
 import android.app.Activity
 import android.os.Bundle
 import android.view.KeyEvent
+import android.view.View
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
@@ -40,6 +41,7 @@ class PlayerActivity : Activity() {
 
         player = buildPlayer()
         playerView.player = player
+        setupSourceBarVisibility()
 
         Thread {
             try {
@@ -150,6 +152,31 @@ class PlayerActivity : Activity() {
         if (pos > Config.RESUME_THRESHOLD_MS) player.seekTo(pos)
         player.playWhenReady = true
         Toast.makeText(this, "Source: ${s.name}", Toast.LENGTH_SHORT).show()
+    }
+
+    /**
+     * The source bar shows/hides together with the player controls so it never
+     * distracts from viewing. While a chip has focus it stays visible even if
+     * the controls time out underneath it, and hides once focus leaves.
+     */
+    private fun setupSourceBarVisibility() {
+        val bar = findViewById<View>(R.id.sourceChips)
+        bar.setOnFocusChangeListener { _, hasFocus ->
+            if (!hasFocus && !playerView.isControllerFullyVisible) {
+                bar.visibility = View.GONE
+            }
+        }
+        playerView.setControllerVisibilityListener(
+            object : androidx.media3.ui.PlayerView.ControllerVisibilityListener {
+                override fun onVisibilityChanged(visibility: Int) {
+                    if (visibility == View.VISIBLE) {
+                        bar.visibility = View.VISIBLE
+                    } else if (!bar.hasFocus()) {
+                        bar.visibility = View.GONE
+                    }
+                }
+            }
+        )
     }
 
     private fun buildSourceChips() {
