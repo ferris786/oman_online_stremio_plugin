@@ -3,6 +3,7 @@ package com.kmk.turkishtv
 import android.app.Activity
 import android.os.Bundle
 import android.view.KeyEvent
+import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.media3.common.MediaItem
@@ -19,6 +20,7 @@ class PlayerActivity : Activity() {
     private lateinit var player: ExoPlayer
     private lateinit var playerView: PlayerView
     private lateinit var sourceLabel: TextView
+    private lateinit var sourceChipRow: LinearLayout
 
     private var streams: List<Api.Stream> = emptyList()
     private var streamIndex = 0
@@ -33,6 +35,7 @@ class PlayerActivity : Activity() {
 
         playerView = findViewById(R.id.playerView)
         sourceLabel = findViewById(R.id.sourceLabel)
+        sourceChipRow = findViewById(R.id.sourceChipRow)
         videoId = intent.getStringExtra("videoId") ?: run { finish(); return }
 
         player = buildPlayer()
@@ -48,6 +51,7 @@ class PlayerActivity : Activity() {
                     } else {
                         streams = s
                         streamIndex = 0
+                        buildSourceChips()
                         playCurrent()
                     }
                 }
@@ -124,15 +128,22 @@ class PlayerActivity : Activity() {
     private fun tryNextSource(reason: String) {
         Toast.makeText(this, "$reason - trying next source…", Toast.LENGTH_SHORT).show()
         streamIndex++
+        highlightChips()
         playCurrent()
     }
 
     private fun cycleSource(delta: Int) {
         if (streams.isEmpty()) return
-        streamIndex = (streamIndex + delta + streams.size) % streams.size
+        switchToSource((streamIndex + delta + streams.size) % streams.size)
+    }
+
+    private fun switchToSource(index: Int) {
+        if (streams.isEmpty() || index < 0 || index >= streams.size) return
+        streamIndex = index
         playbackStarted = false
         val s = streams[streamIndex]
         sourceLabel.text = "${streamIndex + 1}/${streams.size} · ${s.name}"
+        highlightChips()
         val pos = player.currentPosition
         player.setMediaItem(MediaItem.fromUri(s.url))
         player.prepare()
@@ -141,10 +152,54 @@ class PlayerActivity : Activity() {
         Toast.makeText(this, "Source: ${s.name}", Toast.LENGTH_SHORT).show()
     }
 
+    private fun buildSourceChips() {
+        sourceChipRow.removeAllViews()
+        val density = resources.displayMetrics.density
+        streams.forEachIndexed { i, stream ->
+            val chip = TextView(this).apply {
+                text = "${i + 1} · ${stream.name}"
+                textSize = 13f
+                setTextColor(resources.getColor(R.color.text))
+                background = getDrawable(R.drawable.row_selector)
+                val h = (density * 8).toInt()
+                setPadding(h, h / 2, h, h / 2)
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { marginEnd = (density * 6).toInt() }
+                setOnClickListener { switchToSource(i) }
+                setOnFocusChangeListener { _, hasFocus ->
+                    val scale = if (hasFocus) 1.1f else 1f
+                    animate().scaleX(scale).scaleY(scale).setDuration(120).start()
+                    translationZ = if (hasFocus) 10f else 0f
+                }
+            }
+            sourceChipRow.addView(chip)
+        }
+        highlightChips()
+    }
+
+    private fun highlightChips() {
+        for (i in 0 until sourceChipRow.childCount) {
+            val chip = sourceChipRow.getChildAt(i) as TextView
+            chip.setTextColor(resources.getColor(
+                if (i == streamIndex) R.color.accent else R.color.text))
+        }
+    }
+
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+        // Number keys 1-9 jump straight to a source
+        if (keyCode in KeyEvent.KEYCODE_1..KeyEvent.KEYCODE_9) {
+            val idx = keyCode - KeyEvent.KEYCODE_1
+            if (idx < streams.size) {
+                switchToSource(idx)
+                return true
+            }
+        }
         return when (keyCode) {
             KeyEvent.KEYCODE_CHANNEL_UP -> { cycleSource(1); true }
             KeyEvent.KEYCODE_CHANNEL_DOWN -> { cycleSource(-1); true }
+            KeyEvent.KEYCODE_MENU -> { cycleSource(1); true }
             else -> super.onKeyDown(keyCode, event)
         }
     }

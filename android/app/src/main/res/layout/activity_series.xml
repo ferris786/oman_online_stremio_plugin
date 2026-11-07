@@ -60,7 +60,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:paddingStart="28dp"
-            android:paddingTop="16dp"
+            android:paddingTop="14dp"
             android:text="Continue Watching"
             android:textColor="@color/text"
             android:textSize="18sp"
@@ -71,10 +71,29 @@
             android:id="@+id/continueRow"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
+            android:layout_marginTop="6dp"
             android:clipToPadding="false"
             android:paddingStart="24dp"
             android:paddingEnd="24dp"
+            android:visibility="gone" />
+
+        <!-- Slim bar shown while the Continue row is collapsed (browsing series) -->
+        <TextView
+            android:id="@+id/continueBar"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="28dp"
+            android:layout_marginTop="6dp"
+            android:background="@drawable/row_selector"
+            android:focusable="true"
+            android:clickable="true"
+            android:paddingStart="18dp"
+            android:paddingEnd="18dp"
+            android:paddingTop="8dp"
+            android:paddingBottom="8dp"
+            android:text="▸  Continue Watching"
+            android:textColor="@color/accent"
+            android:textSize="15sp"
             android:visibility="gone" />
 
         <TextView

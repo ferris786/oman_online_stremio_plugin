@@ -186,6 +186,15 @@ app.get("/proxy/:filename", proxyHandler);
 // The APK is built from android/ (see android/README.md) and committed here,
 // so this link always serves the latest committed build.
 const APK_PATH = path.join(__dirname, "../android/apk/turkishtv.apk");
+app.get("/version.json", (req, res) => {
+    const versionFile = path.join(__dirname, "../android/apk/version.json");
+    if (!fs.existsSync(versionFile)) {
+        return res.status(404).json({ error: "no version info" });
+    }
+    res.setHeader("Content-Type", "application/json");
+    res.sendFile(versionFile);
+});
+
 app.get(["/apk", "/app.apk"], (req, res) => {
     if (!fs.existsSync(APK_PATH)) {
         return res.status(404).send("APK not built - see android/README.md");
