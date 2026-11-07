@@ -1,6 +1,13 @@
 const express = require("express");
 const cors = require("cors");
 const axios = require("axios");
+const http = require("http");
+const https = require("https");
+
+// Pooled connections to upstream CDNs: without keep-alive every segment fetch
+// pays a fresh TCP+TLS handshake, which shows up as playback stutter.
+const httpAgent = new http.Agent({ keepAlive: true, maxSockets: 64, keepAliveMsecs: 30000 });
+const httpsAgent = new https.Agent({ keepAlive: true, maxSockets: 64, keepAliveMsecs: 30000 });
 const { addonBuilder, getRouter } = require("stremio-addon-sdk");
 const manifest = require("./manifest");
 const { getSeries, getMeta } = require("./catalog");
@@ -65,6 +72,7 @@ async function proxyHandler(req, res) {
 
         const response = await axios.get(targetUrl, {
             headers,
+            httpAgent, httpsAgent,
             responseType: "stream", // STREAMING: Important for low memory usage
             validateStatus: (status) => status < 400
         });
@@ -90,6 +98,7 @@ async function proxyHandler(req, res) {
 
                 // Force HLS content type for Stremio to ensure it recognizes the playlist
                 res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
+                res.setHeader("Cache-Control", "public, max-age=60");
 
                 // Rewrite URLs, carrying the referer/cookie context to child requests.
                 //
@@ -145,6 +154,7 @@ async function proxyHandler(req, res) {
             if (response.headers["content-length"]) res.setHeader("Content-Length", response.headers["content-length"]);
             if (response.headers["content-range"]) res.setHeader("Content-Range", response.headers["content-range"]);
             if (response.headers["accept-ranges"]) res.setHeader("Accept-Ranges", response.headers["accept-ranges"]);
+            res.setHeader("Cache-Control", "public, max-age=3600");
             response.data.pipe(res);
 
             response.data.on("error", (err) => {
@@ -176,6 +186,7 @@ app.get("/proxy/:filename", proxyHandler);
 function xsPlaylist(res, text) {
     res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
     res.setHeader("Content-Length", Buffer.byteLength(text));
+    res.setHeader("Cache-Control", "public, max-age=300");
     res.status(200);
     res.end(text);
 }
@@ -188,7 +199,7 @@ app.get("/xs/master.m3u8", async (req, res) => {
         const names = xs.variantNames(state.manifest);
         if (!names.length) return res.status(404).send("No variants");
 
-        const lines = ["#EXTM3U", "#EXT-X-VERSION:3"];
+        const lines = ["#EXTM3U", "#EXT-X-VERSION:3", "#EXT-X-INDEPENDENT-SEGMENTS"];
         const audioTracks = state.manifest.audio || [];
         for (const track of audioTracks) {
             const lang = track.lang || "und";
@@ -215,12 +226,16 @@ app.get("/xs/master.m3u8", async (req, res) => {
 });
 
 function xsMediaPlaylistText(durs, td, uriFor) {
+    // Per the HLS spec TARGETDURATION must be >= the longest EXTINF (rounded);
+    // use the manifest hint only as a floor so odd durations never break players.
+    const maxDur = Math.max(1, ...durs.map(d => parseFloat(d) || 0), parseInt(td) || 0);
     const lines = [
         "#EXTM3U",
         "#EXT-X-VERSION:3",
-        `#EXT-X-TARGETDURATION:${Math.max(1, parseInt(td) || 10)}`,
+        `#EXT-X-TARGETDURATION:${Math.round(maxDur)}`,
         "#EXT-X-MEDIA-SEQUENCE:0",
-        "#EXT-X-PLAYLIST-TYPE:VOD"
+        "#EXT-X-PLAYLIST-TYPE:VOD",
+        "#EXT-X-INDEPENDENT-SEGMENTS"
     ];
     durs.forEach((dur, i) => {
         lines.push(`#EXTINF:${dur},`);
@@ -285,6 +300,7 @@ app.get("/xs/segment.ts", async (req, res) => {
             // audio segments are clear TS - passthrough
             res.setHeader("Content-Type", "video/mp2t");
             res.setHeader("Content-Length", raw.length);
+            res.setHeader("Cache-Control", "public, max-age=3600");
             return res.status(200).end(raw);
         }
 
@@ -296,6 +312,7 @@ app.get("/xs/segment.ts", async (req, res) => {
                 if (plain[0] !== 0x47) throw new Error("not TS after decrypt");
                 res.setHeader("Content-Type", "video/mp2t");
                 res.setHeader("Content-Length", plain.length);
+                res.setHeader("Cache-Control", "public, max-age=3600");
                 return res.status(200).end(plain);
             } catch (e) {
                 if (force) throw e;
@@ -320,4 +337,16 @@ app.use("/", addonRouter);
 const PORT = process.env.PORT || 7000;
 app.listen(PORT, () => {
     console.log(`Addon running on http://localhost:${PORT}`);
+
+    // Render free dynos sleep after ~15 min without traffic; waking up takes
+    // 30-60s which players experience as buffering/timeouts. A light self-ping
+    // every 10 min keeps the service warm. Disable with KEEP_ALIVE=false.
+    if (process.env.RENDER_EXTERNAL_URL && process.env.KEEP_ALIVE !== "false") {
+        console.log("Keep-alive ping enabled for", process.env.RENDER_EXTERNAL_URL);
+        setInterval(() => {
+            axios.get(process.env.RENDER_EXTERNAL_URL + "/manifest.json", { timeout: 15000 })
+                .then(() => console.log("keep-alive ping ok"))
+                .catch(() => {});
+        }, 10 * 60 * 1000).unref();
+    }
 });

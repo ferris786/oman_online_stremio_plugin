@@ -36,6 +36,13 @@
 
 const axios = require("axios");
 const crypto = require("crypto");
+const http = require("http");
+const https = require("https");
+
+// Pooled upstream connections - one TLS handshake per CDN host instead of one
+// per segment, which materially reduces per-segment latency for /xs playback.
+const httpAgent = new http.Agent({ keepAlive: true, maxSockets: 64, keepAliveMsecs: 30000 });
+const httpsAgent = new https.Agent({ keepAlive: true, maxSockets: 64, keepAliveMsecs: 30000 });
 
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 
@@ -56,6 +63,7 @@ async function fetchPage(playerUrl, referer) {
     const resp = await axios.get(playerUrl, {
         headers: { "User-Agent": UA, "Referer": referer || originOf(playerUrl) + "/" },
         timeout: 20000,
+        httpAgent, httpsAgent,
         validateStatus: () => true
     });
     if (resp.status !== 200 || !resp.data || typeof resp.data !== "string") {
@@ -73,6 +81,7 @@ function apiGet(origin, params, playerUrl) {
             "X-XS-P": "1"
         },
         timeout: 20000,
+        httpAgent, httpsAgent,
         responseType: "arraybuffer",
         validateStatus: () => true
     });
@@ -155,6 +164,7 @@ async function fetchEncryptedSegment(url, referer) {
     const resp = await axios.get(url, {
         headers: { "User-Agent": UA, "Referer": referer || "https://oo.xtremestream.xyz/" },
         timeout: 30000,
+        httpAgent, httpsAgent,
         responseType: "arraybuffer",
         validateStatus: () => true
     });

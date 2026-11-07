@@ -212,68 +212,32 @@ async function getStream(type, id) {
     const { siteSlug, abs } = resolved;
     log(`Resolved: series=${siteSlug}, absolute episode=${abs}`);
 
+    // Resolve all four sources in parallel: stream-list latency is the
+    // slowest single source, not the sum of all of them.
+    const results = await Promise.allSettled([
+        getOsmanOnlineStream(siteSlug, abs),
+        getKayiFamilyStream(siteSlug, abs),
+        getKayiFamilyTVStream(siteSlug, abs),
+        getOsmanOnlineLiveStream(siteSlug, abs)
+    ]);
+
+    const defs = [
+        { name: "OsmanOnline", title: `Source 1: OsmanOnline (E${abs})` },
+        { name: "KayiFamily", title: `Source 2: KayiFamily (E${abs})` },
+        { name: "KayiFamilyTV", title: `Source 3: KayiFamilyTV (E${abs})` },
+        { name: "OsmanOnlineLive", title: "Source 4: OsmanOnline.live 1080p (via addon proxy)" }
+    ];
+
     const streams = [];
-
-    // Source 1: OsmanOnline (new site -> vidara.to)
-    try {
-        const osmanStream = await getOsmanOnlineStream(siteSlug, abs);
-        if (osmanStream) {
-            streams.push({
-                name: "OsmanOnline",
-                title: `Source 1: OsmanOnline (E${abs})`,
-                url: osmanStream.url
-            });
-            log("Added OsmanOnline stream");
+    results.forEach((r, i) => {
+        const label = defs[i].name;
+        if (r.status === "fulfilled" && r.value && r.value.url) {
+            streams.push({ name: defs[i].name, title: defs[i].title, url: r.value.url });
+            log(`Added ${label} stream`);
+        } else if (r.status === "rejected") {
+            log(`${label} fetch error: ${r.reason && r.reason.message}`);
         }
-    } catch (err) {
-        log(`OsmanOnline fetch error: ${err.message}`);
-    }
-
-    // Source 2: KayiFamily (kayihome.xyz / vidara / wakeupummah / okru / vk)
-    try {
-        const kayiStream = await getKayiFamilyStream(siteSlug, abs);
-        if (kayiStream) {
-            streams.push({
-                name: "KayiFamily",
-                title: `Source 2: KayiFamily (E${abs})`,
-                url: kayiStream.url
-            });
-            log("Added KayiFamily stream");
-        }
-    } catch (err) {
-        log(`KayiFamily fetch error: ${err.message}`);
-    }
-
-    // Source 3: KayiFamilyTV (wakeupummah FirePlayer mirrors)
-    try {
-        const kayiTVStream = await getKayiFamilyTVStream(siteSlug, abs);
-        if (kayiTVStream) {
-            streams.push({
-                name: "KayiFamilyTV",
-                title: `Source 3: KayiFamilyTV (E${abs})`,
-                url: kayiTVStream.url
-            });
-            log("Added KayiFamilyTV stream");
-        }
-    } catch (err) {
-        log(`KayiFamilyTV fetch error: ${err.message}`);
-    }
-
-    // Source 4: osmanonline.live (xtremestream, up to 1080p - plays through
-    // the addon proxy because segments are AES-encrypted server-side)
-    try {
-        const liveStream = await getOsmanOnlineLiveStream(siteSlug, abs);
-        if (liveStream) {
-            streams.push({
-                name: "OsmanOnlineLive",
-                title: `Source 4: OsmanOnline.live 1080p (via addon proxy)`,
-                url: liveStream.url
-            });
-            log("Added OsmanOnlineLive stream");
-        }
-    } catch (err) {
-        log(`OsmanOnlineLive fetch error: ${err.message}`);
-    }
+    });
 
     if (streams.length === 0) {
         log("No streams found from any source");
