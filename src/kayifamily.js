@@ -1,6 +1,7 @@
 const axios = require("axios");
 const cheerio = require("cheerio");
 const { okru, vk } = require("./extractors");
+const { extractKayihome, extractWakeupummah, extractVidara } = require("./extractors/fireplayer");
 
 // Enable debug logging
 const DEBUG = true;
@@ -31,6 +32,19 @@ const SEASON_OFFSETS = {
 };
 
 const SERIES_NAME_MAP = {
+    // New osmanonline.co.uk slugs
+    'kurulus-osman': 'kurulus-osman',
+    'kurulus-orhan': 'kurulus-orhan',
+    'mehmed-fetihler-sultani': 'mehmed-fetihler-sultani',
+    'kudus-fatihi-selahaddin-eyyubi': 'salahuddin-ayyubi',
+    'mevlana-rumi': 'mevlana-rumi',
+    'alparslan-buyuk-selcuklu': 'alparslan-buyuk-selcuklu',
+    'payitaht-abdulhamid': 'payitaht-abdulhamid',
+    'destan': 'destan',
+    'dirilis-ertugrul': 'dirilis-ertugrul',
+    'barbaroslar': 'barbaroslar-akdenizin-kilici',
+    'uyanis-buyuk-selcuklu': 'uyanis-buyuk-selcuklu',
+    // Legacy osmanonline.info slugs
     'watch-kurulus-osman-with-english-subtitles': 'kurulus-osman',
     'watch-kurulus-orhan-with-english-subtitles': 'kurulus-orhan',
     'watch-mehmed-fetihler-sultani-with-english-subtitles': 'mehmed-fetihler-sultani',
@@ -52,6 +66,21 @@ function toAbsoluteEpisode(seriesSlug, season, episode) {
         return (season - 1) * 100 + episode;
     }
     return offsets[season] + episode;
+}
+
+// Inverse of toAbsoluteEpisode: absolute episode number -> {season, seasonEp}
+function absToSeasonEpisode(seriesSlug, abs) {
+    const offsets = SEASON_OFFSETS[seriesSlug];
+    if (!offsets) return { season: 1, seasonEp: abs };
+    let best = null;
+    for (const [seasonStr, offset] of Object.entries(offsets)) {
+        if (offset < abs) {
+            const season = parseInt(seasonStr);
+            if (!best || offset > offsets[best]) best = seasonStr;
+        }
+    }
+    if (!best) return { season: 1, seasonEp: abs };
+    return { season: parseInt(best), seasonEp: abs - offsets[best] };
 }
 
 function buildKayiFamilyUrls(seriesSlug, season, absoluteEp, seasonEp) {
@@ -167,141 +196,10 @@ async function extractBestbStream(iframeUrl) {
  * - Client-side JavaScript (FirePlayer) reads the embedded config
  */
 async function extractKayihomeStream(iframeUrl) {
-    try {
-        log(`Extracting from kayihome: ${iframeUrl}`);
-        
-        // Extract data parameter
-        const dataMatch = iframeUrl.match(/data=([a-f0-9]+)/);
-        if (!dataMatch) {
-            log('No data parameter found in kayihome URL');
-            return null;
-        }
-        
-        const dataParam = dataMatch[1];
-        
-        // METHOD 1: Parse HTML page source (PRIMARY - This works!)
-        // Kayihome embeds video config in the fireload() function
-        log('Trying HTML parsing method...');
-        
-        try {
-            const playerUrl = `https://kayihome.xyz/player/index.php?data=${dataParam}`;
-            const { data: html } = await axios.get(playerUrl, {
-                headers: {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                    'Referer': 'https://kayifamily.com/'
-                },
-                timeout: 10000,
-                validateStatus: () => true
-            });
-            
-            // Check if page actually returned a 404 or no_video page (not just in JS code)
-            // Note: no_video.html appears in devtools detection script, so check title or actual content
-            const titleMatch = html.match(/<title>([^<]+)/i);
-            const pageTitle = titleMatch ? titleMatch[1].toLowerCase() : '';
-            
-            if (html.includes('404 Not Found') || 
-                pageTitle.includes('404') || 
-                pageTitle.includes('not found') ||
-                (html.includes('no_video.html') && html.includes('No Video Available')) ||
-                html.includes('<h1>No Video Found</h1>')) {
-                log('Kayihome player shows no video available');
-                return null;
-            }
-            
-            // Extract videoUrl from fireload function
-            // Format: "videoUrl":"\/cdn\/hls\/HASH\/master.txt"
-            const videoUrlMatch = html.match(/"videoUrl"\s*:\s*"([^"]+)"/);
-            if (videoUrlMatch) {
-                const videoUrl = videoUrlMatch[1].replace(/\\\//g, '/');
-                log(`Found videoUrl: ${videoUrl}`);
-                
-                // Extract hostList for available hosts
-                // Format: "hostList":{"1":["reabc.xyz","aeabc.xyz",...]}
-                const hostListMatch = html.match(/"hostList"\s*:\s*\{[^}]+"1"\s*:\s*\[([^\]]+)\]/);
-                const hosts = [];
-                if (hostListMatch) {
-                    const hostMatches = hostListMatch[1].match(/"([^"]+\.xyz)"/g);
-                    if (hostMatches) {
-                        hostMatches.forEach(h => {
-                            hosts.push(h.replace(/"/g, ''));
-                        });
-                    }
-                }
-                
-                // Default hosts if parsing fails
-                if (hosts.length === 0) {
-                    hosts.push('reabc.xyz', 'aeabc.xyz', 'eeabc.xyz', 'keabc.xyz', 'teabc.xyz');
-                }
-                log(`Available hosts: ${hosts.join(', ')}`);
-                
-                // Construct full URL using first host
-                const fullUrl = `https://${hosts[0]}${videoUrl}`;
-                log(`Returning stream URL: ${fullUrl}`);
-                
-                return {
-                    url: fullUrl,
-                    type: 'hls',
-                    source: 'kayifamily-kayihome'
-                };
-            }
-        } catch (htmlError) {
-            log(`HTML parsing failed: ${htmlError.message}`);
-        }
-        
-        // METHOD 2: Try API (FALLBACK - Likely won't work)
-        log('Trying API method (fallback)...');
-        
-        try {
-            const apiUrl = `https://kayihome.xyz/player/api.php?data=${dataParam}&do=getVideo`;
-            const response = await axios.post(apiUrl,
-                new URLSearchParams({
-                    hash: dataParam,
-                    r: 'https://kayifamily.com/'
-                }), {
-                headers: {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                    'X-Requested-With': 'XMLHttpRequest',
-                    'Origin': 'https://kayihome.xyz',
-                    'Referer': iframeUrl
-                },
-                timeout: 10000
-            });
-            
-            log(`API response: ${JSON.stringify(response.data).substring(0, 200)}`);
-            
-            // Check if response contains video data
-            if (response.data) {
-                if (typeof response.data === 'object') {
-                    if (response.data.videoSource || response.data.securedLink) {
-                        const streamUrl = response.data.securedLink || response.data.videoSource;
-                        log(`Found video URL from API: ${streamUrl}`);
-                        return {
-                            url: streamUrl,
-                            type: response.data.hls ? 'hls' : 'mp4',
-                            source: 'kayifamily-kayihome'
-                        };
-                    }
-                }
-                
-                if (typeof response.data === 'string' && response.data.startsWith('http')) {
-                    log(`Found direct URL from API: ${response.data}`);
-                    return {
-                        url: response.data,
-                        type: 'hls',
-                        source: 'kayifamily-kayihome'
-                    };
-                }
-            }
-        } catch (apiError) {
-            log(`API request failed: ${apiError.message}`);
-        }
-        
-        log('No stream found in kayihome page');
-        return null;
-    } catch (error) {
-        log(`Kayihome extraction error: ${error.message}`);
-        return null;
-    }
+    // URL scheme changed (Nov 2026): master playlist is served by kayihome.xyz itself
+    // at /cdn/hls/HASH/master.txt?s={videoServer}&d= with the player page as Referer.
+    // See src/extractors/fireplayer.js for details.
+    return extractKayihome(iframeUrl);
 }
 
 /**
@@ -370,7 +268,8 @@ async function extractStrmupStream(iframeUrl) {
     }
 }
 
-async function getKayiFamilyStream(osmanSeriesSlug, season, episode) {
+// osmanSeriesSlug: legacy "watch-..." slug OR new co.uk slug; abs: absolute episode number
+async function getKayiFamilyStream(osmanSeriesSlug, abs) {
     try {
         const kayiSeriesSlug = SERIES_NAME_MAP[osmanSeriesSlug];
         
@@ -379,12 +278,13 @@ async function getKayiFamilyStream(osmanSeriesSlug, season, episode) {
             return null;
         }
         
-        const absoluteEp = toAbsoluteEpisode(kayiSeriesSlug, season, episode);
+        const { season, seasonEp } = absToSeasonEpisode(kayiSeriesSlug, abs);
+        const absoluteEp = abs;
         
-        log(`Looking for ${kayiSeriesSlug} S${season}E${episode} (absolute: ${absoluteEp})`);
+        log(`Looking for ${kayiSeriesSlug} absolute episode ${abs} (S${season}E${seasonEp})`);
         
         // Pass both absolute and season-relative episode numbers
-        const urls = buildKayiFamilyUrls(kayiSeriesSlug, season, absoluteEp, episode);
+        const urls = buildKayiFamilyUrls(kayiSeriesSlug, season, absoluteEp, seasonEp);
         
         for (const url of urls) {
             try {
@@ -408,7 +308,8 @@ async function getKayiFamilyStream(osmanSeriesSlug, season, episode) {
                 const hasVideoContent = data.includes('bestb.stream') || 
                                        data.includes('kayihome.xyz') || 
                                        data.includes('vidara.to') ||
-                                       data.includes('strmup.to');
+                                       data.includes('strmup.to') ||
+                                       data.includes('wakeupummah.com');
                 
                 if (!hasVideoContent) {
                     log('No video content found on page (404 or no video)');
@@ -428,36 +329,22 @@ async function getKayiFamilyStream(osmanSeriesSlug, season, episode) {
                 // PRIORITY ORDER: Most reliable sources first
                 
                 // 1. Look for vidara.to (MOST RELIABLE - Always try first!)
-                const vidaraIframe = $('iframe[src*="vidara.to"]').attr('src');
+                const vidaraIframe = $('iframe[src*="vidara.to"]').attr('src') || $('iframe[data-litespeed-src*="vidara.to"]').attr('data-litespeed-src');
                 if (vidaraIframe) {
                     log(`Found vidara.to iframe: ${vidaraIframe}`);
                     const filecodeMatch = vidaraIframe.match(/vidara\.to\/e\/([a-zA-Z0-9]+)/);
                     if (filecodeMatch) {
-                        const apiUrl = `https://vidara.to/api/stream?filecode=${filecodeMatch[1]}`;
-                        try {
-                            const response = await axios.get(apiUrl, {
-                                headers: {
-                                    'User-Agent': 'Mozilla/5.0',
-                                    'Referer': 'https://kayifamily.com/'
-                                },
-                                timeout: 10000
-                            });
-                            if (response.data && response.data.streaming_url) {
-                                log('Successfully extracted from vidara.to');
-                                return {
-                                    url: response.data.streaming_url,
-                                    type: 'hls',
-                                    source: 'kayifamily-vidara'
-                                };
-                            }
-                        } catch (e) {
-                            log(`Vidara API error: ${e.message}`);
+                        // vidara API switched from GET to POST JSON (Nov 2026)
+                        const stream = await extractVidara(filecodeMatch[1], url);
+                        if (stream) {
+                            log('Successfully extracted from vidara.to');
+                            return stream;
                         }
                     }
                 }
                 
                 // 2. Look for strmup.to (when online)
-                const strmupIframe = $('iframe[src*="strmup.to"]').attr('src');
+                const strmupIframe = $('iframe[src*="strmup.to"]').attr('src') || $('iframe[data-litespeed-src*="strmup.to"]').attr('data-litespeed-src');
                 if (strmupIframe) {
                     log(`Found strmup.to iframe: ${strmupIframe}`);
                     const stream = await extractStrmupStream(strmupIframe);
@@ -467,8 +354,19 @@ async function getKayiFamilyStream(osmanSeriesSlug, season, episode) {
                     }
                 }
                 
-                // 3. Look for bestb.stream (when online)
-                const bestbIframe = $('iframe[src*="bestb.stream"]').attr('src');
+                // 3. Look for wakeupummah.com FirePlayer embeds (kayifamilytv-style mirrors)
+                const wuIframe = $('iframe[src*="wakeupummah.com"]').attr('src') || $('iframe[data-litespeed-src*="wakeupummah.com"]').attr('data-litespeed-src');
+                if (wuIframe) {
+                    log(`Found wakeupummah iframe: ${wuIframe}`);
+                    const stream = await extractWakeupummah(wuIframe, url);
+                    if (stream) {
+                        log('Successfully extracted from wakeupummah.com');
+                        return stream;
+                    }
+                }
+
+                // 4. Look for bestb.stream (when online)
+                const bestbIframe = $('iframe[src*="bestb.stream"]').attr('src') || $('iframe[data-litespeed-src*="bestb.stream"]').attr('data-litespeed-src');
                 if (bestbIframe) {
                     log(`Found bestb.stream iframe: ${bestbIframe}`);
                     const stream = await extractBestbStream(bestbIframe);
@@ -479,7 +377,7 @@ async function getKayiFamilyStream(osmanSeriesSlug, season, episode) {
                 }
                 
                 // 4. Look for kayihome.xyz (least reliable - often returns 404)
-                const kayihomeIframe = $('iframe[src*="kayihome.xyz"]').attr('src');
+                const kayihomeIframe = $('iframe[src*="kayihome.xyz"]').attr('src') || $('iframe[data-litespeed-src*="kayihome.xyz"]').attr('data-litespeed-src');
                 if (kayihomeIframe) {
                     log(`Found kayihome.xyz iframe: ${kayihomeIframe}`);
                     const stream = await extractKayihomeStream(kayihomeIframe);
@@ -539,7 +437,7 @@ async function getKayiFamilyStream(osmanSeriesSlug, season, episode) {
             }
         }
         
-        log(`Could not find KayiFamily stream for ${kayiSeriesSlug} S${season}E${episode}`);
+        log(`Could not find KayiFamily stream for ${kayiSeriesSlug} episode ${abs}`);
         return null;
         
     } catch (error) {
@@ -551,6 +449,9 @@ async function getKayiFamilyStream(osmanSeriesSlug, season, episode) {
 module.exports = {
     getKayiFamilyStream,
     toAbsoluteEpisode,
+    absToSeasonEpisode,
+    extractBestbStream,
+    extractStrmupStream,
     SERIES_NAME_MAP,
     SEASON_OFFSETS
 };

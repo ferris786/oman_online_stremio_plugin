@@ -33,36 +33,48 @@ builder.defineStreamHandler(async ({ type, id }) => {
 });
 
 // Proxy Route
+// Query params:
+//   url      - target URL (required)
+//   referer  - Referer header to send upstream (kayihome.xyz CDNs require the
+//              exact player page URL as referer; vidara segments are IP-locked)
+//   cookie   - Cookie header to send upstream (legacy turktvuk support)
 app.get("/proxy", async (req, res) => {
     const targetUrl = req.query.url;
     const cookie = req.query.cookie;
+    const referer = req.query.referer;
 
     if (!targetUrl) {
         return res.status(400).send("Missing url param");
     }
 
     try {
-        console.log(`Proxying: ${targetUrl}`);
-        // console.log(`Proxy Cookie: ${cookie}`);
+        console.log(`Proxying: ${targetUrl.slice(0, 120)}`);
+
+        const headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "*/*",
+            "Accept-Encoding": "identity"
+        };
+        if (referer) headers["Referer"] = referer;
+        if (cookie) headers["Cookie"] = cookie;
+        if (req.headers.range) headers["Range"] = req.headers.range;
 
         const response = await axios.get(targetUrl, {
-            headers: {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                "Referer": "https://streamify360.com/",
-                "Cookie": cookie || "",
-                "Accept": "*/*",
-                "Accept-Encoding": "identity"
-            },
+            headers,
             responseType: "stream", // STREAMING: Important for low memory usage
             validateStatus: (status) => status < 400
         });
 
         const contentType = response.headers["content-type"];
-        res.setHeader("Content-Type", contentType);
+        if (contentType) res.setHeader("Content-Type", contentType);
+        if (response.headers["content-length"]) res.setHeader("Content-Length", response.headers["content-length"]);
+        if (response.headers["content-range"]) res.setHeader("Content-Range", response.headers["content-range"]);
+        if (response.headers["accept-ranges"]) res.setHeader("Accept-Ranges", response.headers["accept-ranges"]);
 
         // Check if playlist to rewrite
-        // .txt or .m3u8 or application/vnd.apple.mpegurl
+        // .txt / .m3u8 / vnd.apple.mpegurl / kayihome /m3/ media playlists (served as text/plain)
         const isPlaylist = targetUrl.includes(".txt") || targetUrl.includes(".m3u8") ||
+            targetUrl.includes("/m3/") ||
             (contentType && contentType.includes("mpegurl"));
 
         // If it's a playlist, we MUST buffer it to rewrite the URLs inside
@@ -78,7 +90,7 @@ app.get("/proxy", async (req, res) => {
                 // Force HLS content type for Stremio to ensure it recognizes the playlist
                 res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
 
-                // Rewrite URLs
+                // Rewrite URLs, carrying the referer/cookie context to child requests
                 const baseUrl = targetUrl.substring(0, targetUrl.lastIndexOf("/") + 1);
                 const hostUrl = new URL(targetUrl).origin;
 
@@ -95,7 +107,9 @@ app.get("/proxy", async (req, res) => {
                         absoluteLine = baseUrl + line;
                     }
 
-                    const proxyPath = `/proxy?url=${encodeURIComponent(absoluteLine)}&cookie=${encodeURIComponent(cookie || "")}`;
+                    let proxyPath = `/proxy?url=${encodeURIComponent(absoluteLine)}`;
+                    if (referer) proxyPath += `&referer=${encodeURIComponent(referer)}`;
+                    if (cookie) proxyPath += `&cookie=${encodeURIComponent(cookie)}`;
                     return proxyPath;
                 });
 

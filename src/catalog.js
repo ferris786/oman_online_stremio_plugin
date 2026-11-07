@@ -1,14 +1,47 @@
 const axios = require("axios");
 const cheerio = require("cheerio");
 
-const BASE_URL = "https://osmanonline.info";
+// osmanonline.co.uk was redesigned (Nov 2026). The old osmanonline.info domain is dead
+// behind a Cloudflare 526, so the catalog now scrapes the new Next.js site:
+//   series index: https://osmanonline.co.uk/series/  -> /series/{slug}/
+//   episodes:     /series/{slug}/episode-{abs}/
+// Season grouping comes from the JSON-LD TVSeries containsSeason block on each series page.
+const BASE_URL = "https://osmanonline.co.uk";
 
-// Cache for catalog results to improve performance
+const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+
+// Cache for catalog results (6h TTL - the site is slow and this keeps Render snappy)
 let seriesCache = null;
+let seriesCacheTime = 0;
+const CACHE_TTL = 6 * 60 * 60 * 1000;
+
+// Legacy (old osmanonline.info) series id slug -> new co.uk series slug
+const LEGACY_SLUG_MAP = {
+    "watch-kurulus-osman-with-english-subtitles": "kurulus-osman",
+    "watch-kurulus-orhan-with-english-subtitles": "kurulus-orhan",
+    "watch-mehmed-fetihler-sultani-with-english-subtitles": "mehmed-fetihler-sultani",
+    "watch-salahuddin-ayyubi-with-english-subtitles": "kudus-fatihi-selahaddin-eyyubi",
+    "watch-kudus-fatihi-selahaddin-eyyubi-with-english-subtitles": "kudus-fatihi-selahaddin-eyyubi",
+    "watch-mevlana-rumi-with-english-subtitles": "mevlana-rumi",
+    "watch-rumi-with-english-subtitles": "mevlana-rumi",
+    "watch-alparslan-buyuk-selcuklu-with-english-subtitles": "alparslan-buyuk-selcuklu",
+    "watch-payitaht-abdulhamid-with-english-subtitles": "payitaht-abdulhamid",
+    "watch-destan-with-english-subtitles": "destan",
+    "watch-dirilis-ertugrul-with-english-subtitles": "dirilis-ertugrul",
+    "watch-barbaroslar-akdenizin-kilici-with-english-subtitles": "barbaroslar",
+    "watch-uyanis-buyuk-selcuklu-with-english-subtitles": "uyanis-buyuk-selcuklu"
+};
+
+// Poster metadata aliases where slug -> TMDB name matching is not a clean contains-match
+const SLUG_TO_TMDB_KEY = {
+    "bozkir-arslani-celaleddin": "Bozkir Aslani Celaleddin",
+    "mavera-hace-ahmed-yesevi": "Mavera",
+    "mevlana-rumi": "Rumi",
+    "kudus-fatihi-selahaddin-eyyubi": "Kudus Fatihi Selahaddin Eyyubi"
+};
 
 // Comprehensive TMDB metadata for all series (posters + overviews)
 const TMDB_METADATA = {
-    // Main navigation series
     "Kurulus Osman": {
         poster: "https://image.tmdb.org/t/p/w500/tu4BWsGFHcYDWulZwHxylA91vo0.jpg",
         overview: "The series will focus on the life of Osman Bey, the son of Ertugrul Gazi and the founder of the Ottoman Empire."
@@ -25,8 +58,6 @@ const TMDB_METADATA = {
         poster: "https://i.ibb.co/Gv4Ckgz2/kurulus-easter-egg.jpg",
         overview: "The story of Orhan Ghazi, the son of Osman I and the second Sultan of the Ottoman Empire."
     },
-
-    // Additional series from homepage banners (TMDB posters + overviews)
     "Destan": {
         poster: "https://image.tmdb.org/t/p/w500/cSDEb3XvsML6VwYZ5HEJy7vQUS.jpg",
         overview: "The epic love between Akkiz, the legendary warrior mountain girl orphaned by Gök Khan Korkut Khan in the harsh steppes of Central Asia, and Gök Tegini Batuga, who was orphaned by Korkut Khan in the Gök Palace during Gokturk Khaganate."
@@ -64,11 +95,9 @@ const TMDB_METADATA = {
         overview: "The fight of Hace Ahmed Yesevi, who was sent to Baghdad by Yusuf Hemedani."
     },
     "Mehmetcik Kutul Amare": {
-        poster: "https://image.tmdb.org/t/p/w500/8DdZHf7mKcUT3u1YIAkYZ5X856C.jpg",
+        poster: "https://image.tmdb.org/t/p/w500/8DdZHf7GcKUT3u1YIAkYZ5X856C.jpg",
         overview: "During World War I, a group of determined soldiers fights to defend Ottoman territory against English invasion."
     },
-
-    // Previously missing posters - now added!
     "Rumi": {
         poster: "https://image.tmdb.org/t/p/w500/oWMOYrtbV44eYbJ6gQYXWLpqjl2.jpg",
         overview: "In 13th-century Anatolia, as the Mongol threat looms and internal turmoil rages, Rumi, a wise spiritual figure, emerges to assuage people's fears. His timeless words unite reason and compassion, inspiring change."
@@ -82,19 +111,19 @@ const TMDB_METADATA = {
         overview: "The spiritual journey of Aziz Mahmud Hüdayi, a prominent Ottoman Sufi scholar and saint."
     },
     "Al Sancak": {
-        poster: "https://image.tmdb.org/t/p/w500/vlyQk1qV85ivpCJvt3EVTs9Egw.jpg",
+        poster: "https://image.tmdb.org/t/p/w500/vlyQk1qV85ivpCJvt3EVTsE9Egw.jpg",
         overview: "The struggles of 10 talented soldiers out to protect their homeland against its enemies."
     },
     "Young Ibn Sina": {
-        poster: "https://image.tmdb.org/t/p/w500/cMeyeeGIX65vFmnb1PjqhjwLpYq.jpg",
+        poster: "https://image.tmdb.org/t/p/w500/cMeyeeGIX65vFmnb1PjqHjwLpYq.jpg",
         overview: "Life story of Avicenna, philosopher of the Islamic Golden Age."
     },
     "Gilani The Ascetic": {
-        poster: "https://image.tmdb.org/t/p/w500/8Lw6rHrcgYUnpTBOO90bOTkIjt9.jpg",
+        poster: "https://image.tmdb.org/t/p/w500/8Lw6rHrcgYUnpTBOO90bOTkIjt8.jpg",
         overview: "Gilani the Ascetic sets out to Baghdad seeking truth along with Eşref. Following an enduring seclusion, he finds out that the city of Baghdad is in chaos and he begins his historic struggle for equality and peace."
     },
     "Mahsusa": {
-        poster: "https://image.tmdb.org/t/p/w500/icopMK2tpNdH8doBNuM6YZcDB1y.jpg",
+        poster: "https://image.tmdb.org/t/p/w500/icopMK2tpNdH8doBNuM6YZcDB1u.jpg",
         overview: "A Turkish historical drama series focusing on special operations during the Ottoman era."
     },
     "Vefa Sultan": {
@@ -103,231 +132,219 @@ const TMDB_METADATA = {
     }
 };
 
+function slugToTitle(slug) {
+    return slug.split("-")
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(" ");
+}
+
+function lookupMetadata(slug, name) {
+    if (SLUG_TO_TMDB_KEY[slug] && TMDB_METADATA[SLUG_TO_TMDB_KEY[slug]]) {
+        return TMDB_METADATA[SLUG_TO_TMDB_KEY[slug]];
+    }
+    if (name && TMDB_METADATA[name]) return TMDB_METADATA[name];
+
+    // Fuzzy: normalized containment either way
+    const norm = s => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    const n = norm(name || slug);
+    for (const [key, metadata] of Object.entries(TMDB_METADATA)) {
+        const k = norm(key);
+        if (n === k || n.includes(k) || k.includes(n)) return metadata;
+    }
+    return null;
+}
+
+// Legacy "watch-..." series id -> new slug; passthrough for already-new slugs
+function canonicalSlug(seriesIdPart) {
+    if (LEGACY_SLUG_MAP[seriesIdPart]) return LEGACY_SLUG_MAP[seriesIdPart];
+    if (seriesIdPart.startsWith("watch-")) {
+        let s = seriesIdPart.replace(/^watch-/, "").replace(/-with-english-subtitles$/, "");
+        // Some legacy slugs never existed on the new site; fuzzy-correct against catalog later
+        return s;
+    }
+    return seriesIdPart;
+}
+
 async function getSeries() {
-    if (seriesCache) return seriesCache;
+    if (seriesCache && (Date.now() - seriesCacheTime) < CACHE_TTL) return seriesCache;
 
     try {
-        console.log(`Fetching series from: ${BASE_URL}`);
-        const { data } = await axios.get(BASE_URL, {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-            }
+        console.log(`Fetching series index from: ${BASE_URL}/series/`);
+        const { data } = await axios.get(`${BASE_URL}/series/`, {
+            headers: { "User-Agent": UA },
+            timeout: 20000
         });
         const $ = cheerio.load(data);
 
-        console.log("Page title:", $("title").text());
-
         const series = [];
-        const seenUrls = new Set(); // Track URLs to avoid duplicates
+        const seen = new Set();
 
-        // HYBRID APPROACH: Scrape all series collection links from homepage
-        // Pattern: links containing "watch-" and "with-english-subtitles" but NOT "episode-"
-        const allLinks = $("a[href*='watch-'][href*='with-english-subtitles']");
+        $("a[href*='/series/']").each((i, el) => {
+            const href = $(el).attr("href") || "";
+            // Only series pages, not episode pages or the index itself
+            const m = href.match(/\/series\/([a-z0-9-]+)\/?$/i);
+            if (!m) return;
+            const slug = m[1];
+            if (slug === "series" || seen.has(slug)) return;
+            seen.add(slug);
 
-        console.log(`Total links matching pattern: ${allLinks.length}`);
+            const linkText = $(el).text().trim().replace(/\s+/g, " ");
+            let name = (linkText && linkText.length > 2 && linkText.length < 80 && !/season|episode/i.test(linkText))
+                ? linkText
+                : slugToTitle(slug);
 
-        allLinks.each((i, el) => {
-            const href = $(el).attr("href");
-            const linkText = $(el).text().trim();
+            const metadata = lookupMetadata(slug, name);
 
-            // Filter out episode links (we only want series collection pages)
-            if (href && !href.match(/episode-\d+/i)) {
-                // Normalize URL to just the slug for duplicate detection
-                const normalizedSlug = href.split("/").filter(Boolean).pop();
-
-                if (seenUrls.has(normalizedSlug)) {
-                    return; // Skip duplicate
-                }
-                seenUrls.add(normalizedSlug);
-
-                // Extract clean series name from URL
-                // URL pattern: watch-{series-name}-with-english-subtitles
-                let seriesName = null;
-                const urlMatch = href.match(/watch-(.+?)-with-english-subtitles/i);
-
-                if (urlMatch) {
-                    // Convert URL slug to title case
-                    seriesName = urlMatch[1]
-                        .split('-')
-                        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-                        .join(' ');
-                }
-
-                // Use link text if available and cleaner than URL-derived name
-                if (linkText && linkText.length > 0 && linkText.length < 100 && !linkText.includes('\n')) {
-                    seriesName = linkText;
-                }
-
-                // Skip if we couldn't extract a valid name
-                if (!seriesName || seriesName === "Home" || seriesName === "Contact Us") {
-                    return;
-                }
-
-                // Create a stable ID from the URL slug
-                const slug = href.split("/").filter(Boolean).pop();
-                const id = "osmanonline:" + slug;
-
-                // Try to find metadata in our map (try exact match first, then fuzzy match)
-                let poster = null;
-                let description = `Watch ${seriesName} on OsmanOnline`;
-
-                // Exact match
-                if (TMDB_METADATA[seriesName]) {
-                    poster = TMDB_METADATA[seriesName].poster;
-                    description = TMDB_METADATA[seriesName].overview || description;
-                } else {
-                    // Fuzzy match: normalize titles for comparison
-                    const normalizedName = seriesName.toLowerCase().replace(/[^a-z0-9]/g, '');
-                    for (const [key, metadata] of Object.entries(TMDB_METADATA)) {
-                        const normalizedKey = key.toLowerCase().replace(/[^a-z0-9]/g, '');
-                        if (normalizedName === normalizedKey || normalizedName.includes(normalizedKey)) {
-                            poster = metadata.poster;
-                            description = metadata.overview || description;
-                            break;
-                        }
-                    }
-                }
-
-                series.push({
-                    id: id,
-                    type: "series",
-                    name: seriesName,
-                    poster: poster,
-                    description: description,
-                    url: href
-                });
+            // If link text is a truncated subset of the full title, use the full title
+            const fullTitle = metadata && Object.keys(TMDB_METADATA).find(k => TMDB_METADATA[k] === metadata);
+            if (fullTitle && name.length < fullTitle.length &&
+                fullTitle.toLowerCase().startsWith(name.toLowerCase())) {
+                name = fullTitle;
             }
+
+            series.push({
+                id: "osmanonline:" + slug,
+                type: "series",
+                name: name,
+                poster: metadata ? metadata.poster : null,
+                description: metadata ? metadata.overview : `Watch ${name} with English subtitles on OsmanOnline`,
+                slug: slug
+            });
         });
 
-        console.log(`Discovered ${series.length} unique series`);
-        series.forEach(s => console.log(`  - ${s.name} (${s.poster ? 'has poster' : 'no poster'})`));
-
+        console.log(`Discovered ${series.length} series on ${BASE_URL}`);
         seriesCache = series;
+        seriesCacheTime = Date.now();
         return series;
     } catch (error) {
-        console.error("Error fetching series:", error);
-        return [];
+        console.error("Error fetching series:", error.message);
+        return seriesCache || [];
     }
 }
 
-async function getModules(seriesId) {
-    // This function would usually return meta details, but for catalog we can just return the list
-    // If the catalog request asks for a specific series, we need to handle that logic if supported
-    return getSeries();
+// Group absolute episode numbers into seasons using JSON-LD containsSeason
+function groupEpisodes(absEpisodes, ldSeasons) {
+    const videos = [];
+
+    if (ldSeasons && ldSeasons.length) {
+        let cursor = 1;
+        for (const s of ldSeasons) {
+            const seasonNum = parseInt(s.seasonNumber);
+            const count = parseInt(s.numberOfEpisodes);
+            if (!seasonNum || !count) continue;
+            for (let e = 0; e < count; e++) {
+                const abs = cursor + e;
+                if (absEpisodes.includes(abs)) {
+                    videos.push({ abs, season: seasonNum, episode: e + 1 });
+                }
+            }
+            cursor += count;
+        }
+        // Any episodes beyond the LD total: append to last season
+        const overflow = absEpisodes.filter(a => a >= cursor);
+        const lastSeason = ldSeasons.length ? parseInt(ldSeasons[ldSeasons.length - 1].seasonNumber) : 1;
+        overflow.forEach((abs, i) => videos.push({ abs, season: lastSeason, episode: abs - cursor + 1 }));
+        return videos;
+    }
+
+    // Fallback: single season with absolute numbering
+    return absEpisodes.map(abs => ({ abs, season: 1, episode: abs }));
 }
 
 async function getMeta(type, id) {
-    // Logic to scrape episodes for a specific series
-    // ID format: osmanonline:slug
+    // id format: osmanonline:{slug} where slug may be a legacy "watch-..." slug
+    const parts = id.split(":");
+    if (parts.length < 2) throw new Error("Invalid id");
 
-    // We need to find the series URL first (usually by listing all or parsing the ID)
+    let slug = canonicalSlug(parts[1]);
+    let series = null;
     const seriesList = await getSeries();
-    const series = seriesList.find(s => s.id === id);
 
+    series = seriesList.find(s => s.slug === slug);
     if (!series) {
-        throw new Error("Series not found");
+        // Fuzzy: try catalog containment (e.g. legacy slug variants)
+        const norm = s => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+        const n = norm(slug);
+        series = seriesList.find(s => norm(s.slug) === n) ||
+                 seriesList.find(s => norm(s.slug).includes(n) || n.includes(norm(s.slug)));
+    }
+    if (!series) {
+        // Not in catalog (new series might exist before cache refresh): build a minimal entry
+        const metadata = lookupMetadata(slug, null);
+        series = {
+            id, slug,
+            name: slugToTitle(slug),
+            poster: metadata ? metadata.poster : null,
+            description: metadata ? metadata.overview : `Watch ${slugToTitle(slug)} with English subtitles on OsmanOnline`
+        };
     }
 
     try {
-        console.log(`Fetching series page: ${series.url}`);
-        const { data } = await axios.get(series.url);
+        const seriesUrl = `${BASE_URL}/series/${series.slug}/`;
+        console.log(`Fetching series page: ${seriesUrl}`);
+        const { data } = await axios.get(seriesUrl, {
+            headers: { "User-Agent": UA },
+            timeout: 20000
+        });
         const $ = cheerio.load(data);
 
-        const videos = [];
-
-        // Debug selector
-        console.log("Episodes found:", $("a.shortc-button.big.red").length);
-
-        // Selector based on research: a.shortc-button.big.red OR generic a with href containing 'episode-'
-        let episodeLinks = $("a.shortc-button.big.red");
-
-        // Fallback or additive: if few results, try generic links
-        if (episodeLinks.length === 0) {
-            console.log("No standard buttons found, trying generic links...");
-
-            // Create a filter based on the series URL to avoid sidebar/footer links
-            const seriesSlugMatch = series.url.match(/watch-([^/]+)-with-english-subtitles/);
-            const seriesCore = seriesSlugMatch ? seriesSlugMatch[1] : null;
-            console.log(`Debug - Series Core: ${seriesCore}`);
-
-            console.log(`Debug - Initial generic candidates: ${$("a[href*='episode-']").length}`);
-            episodeLinks = $("a[href*='episode-']").filter((i, el) => {
-                const href = $(el).attr("href");
-                if (!href || href.length < 10) return false;
-
-                // Critical: Ensure the link belongs to THIS series
-                const match = seriesCore && href.includes(seriesCore);
-                // console.log(`Checking link: ${href} (Core: ${seriesCore}) -> Match: ${match}`);
-
-                if (seriesCore && !match) {
-                    return false;
+        // Season info from JSON-LD TVSeries.containsSeason
+        let ldSeasons = null;
+        let ldName = null;
+        let ldDescription = null;
+        // JSON-LD may be a single object, an array, or a @graph
+        $("script[type='application/ld+json']").each((i, el) => {
+            if (ldSeasons) return;
+            try {
+                const parsed = JSON.parse($(el).text());
+                const nodes = Array.isArray(parsed) ? parsed
+                    : (parsed["@graph"] ? parsed["@graph"] : [parsed]);
+                for (const ld of nodes) {
+                    if ((ld["@type"] === "TVSeries" || ld.containsSeason) && ld.containsSeason) {
+                        ldSeasons = ld.containsSeason;
+                        ldName = ld.name || null;
+                        ldDescription = ld.description || null;
+                        break;
+                    }
                 }
-                return true;
-            });
-            console.log(`Debug - Generic links after filter: ${episodeLinks.length}`);
-        }
-
-        episodeLinks.each((i, el) => {
-            const title = $(el).text().trim();
-            let href = $(el).attr("href");
-
-            // Extract episode number or season/episode from text if possible
-            // Format example: "Season 1 Episode 1 Bolum 1"
-            let season = 1;
-            let episode = i + 1;
-
-            const seasonMatch = title.match(/Season\s+(\d+)/i);
-            const episodeMatch = title.match(/Episode\s+(\d+)/i);
-
-            if (seasonMatch) {
-                season = parseInt(seasonMatch[1]);
-            }
-            if (episodeMatch) {
-                episode = parseInt(episodeMatch[1]);
-            }
-
-            if (href) {
-                // BUGFIX: Rumi series page links to 'watch-rumi-' which are 404s.
-                // The actual valid episodes are 'watch-mavlana-celaleddin-rumi-'.
-                // We must rewrite the href here.
-                if (series.name === 'Rumi' && href.includes('watch-rumi-')) {
-                    href = href.replace('watch-rumi-', 'watch-mavlana-celaleddin-rumi-');
-                }
-
-                // ID format: osmanonline:slug:url_hash_or_slug
-                // We'll use the episode page slug as the unique identifier part
-                const episodeSlug = href.split("/").filter(Boolean).pop();
-
-                videos.push({
-                    id: `${id}:${episodeSlug}`,
-                    title: title,
-                    released: new Date().toISOString(), // Placeholder
-                    season: season,
-                    episode: episode,
-                    url: href // Store for stream scraping
-                });
-            }
+            } catch (e) { /* malformed ld+json - ignore */ }
         });
 
-        // Reverse to show latest first or based on site order? Site usually has lists.
-        // Assuming site lists usually descending or specific order.
+        // Episode links: /series/{slug}/episode-{abs}/
+        const absSet = new Set();
+        $(`a[href*='/series/${series.slug}/episode-']`).each((i, el) => {
+            const href = $(el).attr("href") || "";
+            const m = href.match(/episode-(\d+)/);
+            if (m) absSet.add(parseInt(m[1]));
+        });
+        const absEpisodes = [...absSet].sort((a, b) => a - b);
+        console.log(`Found ${absEpisodes.length} episodes for ${series.slug} (seasons: ${ldSeasons ? ldSeasons.length : "unknown"})`);
+
+        const grouped = groupEpisodes(absEpisodes, ldSeasons);
+
+        const videos = grouped.map(({ abs, season, episode }) => ({
+            id: `osmanonline:${series.slug}:episode-${abs}`,
+            title: `Episode ${abs}`,
+            season: season,
+            episode: episode,
+            url: `${seriesUrl}episode-${abs}/`
+        }));
 
         return {
             meta: {
-                id: series.id,
+                id: id, // echo the requested id exactly
                 type: "series",
-                name: series.name,
+                name: ldName || series.name,
                 poster: series.poster,
-                background: series.poster, // Use poster as background per user request
-                description: series.description,
+                background: series.poster,
+                description: series.description || ldDescription,
                 videos: videos
             }
         };
-
     } catch (error) {
-        console.error("Error fetching episodes:", error);
+        console.error("Error fetching episodes:", error.message);
         return null;
     }
 }
 
-module.exports = { getSeries, getMeta };
+module.exports = { getSeries, getMeta, canonicalSlug, LEGACY_SLUG_MAP };

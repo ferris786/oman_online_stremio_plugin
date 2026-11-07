@@ -2,7 +2,7 @@ const { addonBuilder } = require("stremio-addon-sdk");
 
 const manifest = {
     id: "org.osmanonline.stremio.v2",
-    version: "1.0.7",
+    version: "1.1.0",
     name: "Turkish Series in English by KMK",
     description: "Watch Turkish historical dramas from OsmanOnline.info",
     resources: ["catalog", "meta", "stream"],
