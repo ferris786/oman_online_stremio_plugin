@@ -153,6 +153,8 @@ class PlayerActivity : Activity() {
         override fun run() {
             if (player.isPlaying) {
                 WatchState.savePosition(this@PlayerActivity, videoId, player.currentPosition)
+                WatchState.updateHistoryPosition(this@PlayerActivity, videoId,
+                    player.currentPosition, player.duration)
             }
             playerView.postDelayed(this, 10_000)
         }
@@ -165,6 +167,7 @@ class PlayerActivity : Activity() {
 
     override fun onStop() {
         WatchState.savePosition(this, videoId, player.currentPosition)
+        WatchState.updateHistoryPosition(this, videoId, player.currentPosition, player.duration)
         playerView.removeCallbacks(saveRunnable)
         player.pause()
         super.onStop()

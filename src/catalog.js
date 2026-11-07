@@ -176,6 +176,24 @@ async function getSeries() {
         });
         const $ = cheerio.load(data);
 
+        // The index embeds each series' TMDB poster via /_next/image/?url=<tmdb url>
+        // Build slug -> poster map so series missing from our TMDB_METADATA still
+        // get real posters in the app.
+        const sitePosters = {};
+        $("a[href*='/series/']").each((i, el) => {
+            const href = $(el).attr("href") || "";
+            const m = href.match(/\/series\/([a-z0-9-]+)\/?$/i);
+            if (!m || m[1] === "series") return;
+            const img = $(el).find("img[src*='tmdb'], img[srcset*='tmdb']").first();
+            const src = img.attr("src") || "";
+            const im = src.match(/[?&]url=([^&]+)/);
+            if (im && !sitePosters[m[1]]) {
+                try {
+                    sitePosters[m[1]] = decodeURIComponent(im[1]);
+                } catch (e) { /* ignore */ }
+            }
+        });
+
         const series = [];
         const seen = new Set();
 
@@ -206,7 +224,7 @@ async function getSeries() {
                 id: "osmanonline:" + slug,
                 type: "series",
                 name: name,
-                poster: metadata ? metadata.poster : null,
+                poster: (metadata && metadata.poster) || sitePosters[slug] || null,
                 description: metadata ? metadata.overview : `Watch ${name} with English subtitles on OsmanOnline`,
                 slug: slug
             });

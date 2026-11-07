@@ -1,10 +1,13 @@
 package com.kmk.turkishtv
 
+import android.animation.AnimatorSet
+import android.animation.ObjectAnimator
 import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
 import android.view.Gravity
 import android.view.View
+import android.view.animation.DecelerateInterpolator
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
@@ -19,10 +22,10 @@ class EpisodesActivity : Activity() {
 
     private var episodes: List<Api.Episode> = emptyList()
     private var seasons: List<Int> = emptyList()
-    private var currentSeason = -1
 
     private var seriesId: String? = null
     private var seriesName: String? = null
+    private var seriesPoster: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -30,6 +33,7 @@ class EpisodesActivity : Activity() {
 
         seriesId = intent.getStringExtra("seriesId")
         seriesName = intent.getStringExtra("seriesName") ?: "Episodes"
+        seriesPoster = intent.getStringExtra("seriesPoster")
         findViewById<TextView>(R.id.seriesName).text = seriesName
         seasonRow = findViewById(R.id.seasonRow)
         list = findViewById(R.id.episodeList)
@@ -46,7 +50,6 @@ class EpisodesActivity : Activity() {
                     this.episodes = eps
                     this.seasons = seasons
                     buildSeasonTabs()
-                    // Default to the highest season (newest episodes)
                     selectSeason(seasons.lastOrNull() ?: 1)
                 }
             } catch (e: Exception) {
@@ -57,9 +60,25 @@ class EpisodesActivity : Activity() {
         }.start()
     }
 
+    private fun focusFx(view: View) {
+        view.onFocusChangeListener = View.OnFocusChangeListener { _, hasFocus ->
+            val scale = if (hasFocus) 1.05f else 1f
+            AnimatorSet().apply {
+                playTogether(
+                    ObjectAnimator.ofFloat(view, "scaleX", scale),
+                    ObjectAnimator.ofFloat(view, "scaleY", scale)
+                )
+                duration = 130
+                interpolator = DecelerateInterpolator()
+                start()
+            }
+            view.translationZ = if (hasFocus) 10f else 0f
+        }
+    }
+
     private fun buildSeasonTabs() {
         seasonRow.removeAllViews()
-        val pad = (resources.displayMetrics.density * 16).toInt()
+        val pad = (resources.displayMetrics.density * 18).toInt()
         for (s in seasons) {
             val tab = TextView(this).apply {
                 text = "Season $s"
@@ -67,26 +86,21 @@ class EpisodesActivity : Activity() {
                 setTextColor(resources.getColor(R.color.text))
                 gravity = Gravity.CENTER
                 setPadding(pad, pad / 2, pad, pad / 2)
-                background = getDrawable(R.drawable.card_bg)
-                val m = (resources.displayMetrics.density * 8).toInt()
+                background = getDrawable(R.drawable.row_selector)
+                val m = (resources.displayMetrics.density * 10).toInt()
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.WRAP_CONTENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT
                 ).apply { marginEnd = m }
                 setOnClickListener { selectSeason(s) }
-                onFocusChangeListener = View.OnFocusChangeListener { _, hasFocus ->
-                    background = getDrawable(
-                        if (hasFocus) R.drawable.card_bg_focused else R.drawable.card_bg)
-                }
+                focusFx(this)
             }
             seasonRow.addView(tab)
         }
     }
 
     private fun selectSeason(season: Int) {
-        currentSeason = season
-        val eps = episodes.filter { it.season == season }
-        adapter.submit(eps)
+        adapter.submit(episodes.filter { it.season == season })
     }
 
     private inner class EpisodeAdapter : RecyclerView.Adapter<EpisodeAdapter.VH>() {
@@ -111,18 +125,24 @@ class EpisodesActivity : Activity() {
         override fun onBindViewHolder(holder: VH, position: Int) {
             val e = items[position]
             holder.label.text = "S${e.season}E${e.episode}"
-            holder.title.text = e.title
-            val watched = WatchState.getPosition(this@EpisodesActivity, e.id)
-            if (watched > Config.RESUME_THRESHOLD_MS) {
-                holder.title.text = "${e.title}  ✓"
-            }
+            holder.title.text = if (WatchState.getPosition(this@EpisodesActivity, e.id) > Config.RESUME_THRESHOLD_MS)
+                "${e.title}  ✓" else e.title
+            focusFx(holder.itemView)
             holder.itemView.setOnClickListener {
                 val sid = seriesId ?: return@setOnClickListener
                 val sname = seriesName ?: ""
-                WatchState.saveLast(this@EpisodesActivity, sid, sname, e.id, e.title, e.season, e.episode)
+                // record in Continue Watching
+                WatchState.upsertHistory(this@EpisodesActivity, WatchState.HistoryEntry(
+                    sid, sname, seriesPoster, e.id, e.title, e.season, e.episode,
+                    WatchState.getPosition(this@EpisodesActivity, e.id), 0, System.currentTimeMillis()
+                ))
                 startActivity(Intent(this@EpisodesActivity, PlayerActivity::class.java).apply {
                     putExtra("videoId", e.id)
-                    putExtra("videoTitle", "S${e.season}E${e.episode} · $sname")
+                    putExtra("videoTitle", "$sname · S${e.season}E${e.episode}")
+                    putExtra("seriesId", sid)
+                    putExtra("seriesName", sname)
+                    putExtra("season", e.season)
+                    putExtra("episode", e.episode)
                 })
             }
         }
