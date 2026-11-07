@@ -90,7 +90,18 @@ async function proxyHandler(req, res) {
                 // Force HLS content type for Stremio to ensure it recognizes the playlist
                 res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
 
-                // Rewrite URLs, carrying the referer/cookie context to child requests
+                // Rewrite URLs, carrying the referer/cookie context to child requests.
+                //
+                // BANDWIDTH: video segments are served DIRECT from the upstream CDNs
+                // (not through this proxy). Verified: the segment CDNs used by our
+                // sources (vidara 97bf1.com .css segments, kayihome .xyz hosts .jpg
+                // segments) require no referer/token - only the playlists do. Piping
+                // every segment through a free Render dyno was the main cause of
+                // playback buffering, so only playlists (small text files) go through
+                // the proxy: master playlists keep their children proxied (they may
+                // need referer/token context), media playlists (#EXTINF = actual
+                // segments) get direct absolute URLs.
+                const isMediaPlaylist = content.includes("#EXTINF");
                 const baseUrl = targetUrl.substring(0, targetUrl.lastIndexOf("/") + 1);
                 const hostUrl = new URL(targetUrl).origin;
 
@@ -105,6 +116,10 @@ async function proxyHandler(req, res) {
                         absoluteLine = hostUrl + line;
                     } else {
                         absoluteLine = baseUrl + line;
+                    }
+
+                    if (isMediaPlaylist) {
+                        return absoluteLine;
                     }
 
                     let proxyPath = `/proxy?url=${encodeURIComponent(absoluteLine)}`;
