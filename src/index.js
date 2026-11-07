@@ -5,6 +5,7 @@ const { addonBuilder, getRouter } = require("stremio-addon-sdk");
 const manifest = require("./manifest");
 const { getSeries, getMeta } = require("./catalog");
 const { getStream } = require("./stream");
+const xs = require("./extractors/xtremestream");
 const urlModule = require("url");
 
 const app = express();
@@ -167,6 +168,150 @@ async function proxyHandler(req, res) {
 app.get("/proxy", proxyHandler);
 app.get("/proxy/:filename", proxyHandler);
 
+
+// ---------------------------------------------------------------------------
+// xtremestream (osmanonline.live) VOD pipeline: materialize HLS playlists and
+// decrypt AES segments on the fly. Paths end in .m3u8 (ExoPlayer HLS sniffing).
+// ---------------------------------------------------------------------------
+function xsPlaylist(res, text) {
+    res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
+    res.setHeader("Content-Length", Buffer.byteLength(text));
+    res.status(200);
+    res.end(text);
+}
+
+app.get("/xs/master.m3u8", async (req, res) => {
+    const { data, u } = req.query;
+    if (!data || !u) return res.status(400).send("Missing data/u");
+    try {
+        const state = await xs.bootstrap(data, u);
+        const names = xs.variantNames(state.manifest);
+        if (!names.length) return res.status(404).send("No variants");
+
+        const lines = ["#EXTM3U", "#EXT-X-VERSION:3"];
+        const audioTracks = state.manifest.audio || [];
+        for (const track of audioTracks) {
+            const lang = track.lang || "und";
+            lines.push(
+                `#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",NAME="${track.name || lang}",` +
+                (lang !== "und" ? `LANGUAGE="${lang}",` : "") +
+                `DEFAULT="${track.default ? "YES" : "NO"}",AUTOSELECT=YES,` +
+                `URI="/xs/audio.m3u8?data=${encodeURIComponent(data)}&u=${encodeURIComponent(u)}&a=${encodeURIComponent(lang)}"`
+            );
+        }
+        for (const name of names) {
+            const info = state.manifest[name];
+            let attrs = `BANDWIDTH=${parseInt(info.bw) || 0}`;
+            if (info.res) attrs += `,RESOLUTION=${info.res}`;
+            if (audioTracks.length) attrs += `,AUDIO="aud"`;
+            lines.push(`#EXT-X-STREAM-INF:${attrs}`);
+            lines.push(`/xs/media.m3u8?data=${encodeURIComponent(data)}&u=${encodeURIComponent(u)}&q=${encodeURIComponent(name)}`);
+        }
+        xsPlaylist(res, lines.join("\n") + "\n");
+    } catch (e) {
+        console.error("[xs/master]", e.message);
+        res.status(502).send("xtremestream: " + e.message);
+    }
+});
+
+function xsMediaPlaylistText(durs, td, uriFor) {
+    const lines = [
+        "#EXTM3U",
+        "#EXT-X-VERSION:3",
+        `#EXT-X-TARGETDURATION:${Math.max(1, parseInt(td) || 10)}`,
+        "#EXT-X-MEDIA-SEQUENCE:0",
+        "#EXT-X-PLAYLIST-TYPE:VOD"
+    ];
+    durs.forEach((dur, i) => {
+        lines.push(`#EXTINF:${dur},`);
+        lines.push(uriFor(i));
+    });
+    lines.push("#EXT-X-ENDLIST");
+    return lines.join("\n") + "\n";
+}
+
+app.get("/xs/media.m3u8", async (req, res) => {
+    const { data, u, q } = req.query;
+    if (!data || !u || !/^\d+p?$/.test(q || "")) return res.status(400).send("Bad data/u/q");
+    try {
+        const state = await xs.bootstrap(data, u);
+        const variant = state.manifest[q];
+        if (!variant || !Array.isArray(variant.durs)) return res.status(404).send("Unknown quality");
+        const qs = `data=${encodeURIComponent(data)}&u=${encodeURIComponent(u)}&q=${encodeURIComponent(q)}`;
+        xsPlaylist(res, xsMediaPlaylistText(variant.durs, variant.td, i => `/xs/segment.ts?${qs}&i=${i}`));
+    } catch (e) {
+        console.error("[xs/media]", e.message);
+        res.status(502).send("xtremestream: " + e.message);
+    }
+});
+
+app.get("/xs/audio.m3u8", async (req, res) => {
+    const { data, u, a } = req.query;
+    if (!data || !u || !/^[A-Za-z0-9_-]+$/.test(a || "")) return res.status(400).send("Bad data/u/a");
+    try {
+        const state = await xs.bootstrap(data, u);
+        const track = (state.manifest.audio || []).find(t => t.lang === a);
+        if (!track || !Array.isArray(track.durs)) return res.status(404).send("Unknown audio track");
+        const qs = `data=${encodeURIComponent(data)}&u=${encodeURIComponent(u)}&a=${encodeURIComponent(a)}`;
+        xsPlaylist(res, xsMediaPlaylistText(track.durs, track.td, i => `/xs/segment.ts?${qs}&i=${i}`));
+    } catch (e) {
+        console.error("[xs/audio]", e.message);
+        res.status(502).send("xtremestream: " + e.message);
+    }
+});
+
+app.get("/xs/segment.ts", async (req, res) => {
+    const { data, u, q, a, i } = req.query;
+    if (!data || !u) return res.status(400).send("Missing data/u");
+    const index = parseInt(i);
+    if (!(index >= 0)) return res.status(400).send("Bad index");
+    const isAudio = !!a && /^[A-Za-z0-9_-]+$/.test(a);
+    if (!isAudio && !(/^\d+p?$/.test(q || ""))) return res.status(400).send("Bad q");
+
+    let state;
+    try {
+        state = await xs.bootstrap(data, u);
+    } catch (e) {
+        return res.status(502).send("xtremestream: " + e.message);
+    }
+
+    const referer = state.origin + "/";
+    const url = isAudio ? xs.audioSegmentUrl(state, index, a) : xs.segmentUrl(state, index, q);
+
+    try {
+        const raw = await xs.fetchEncryptedSegment(url, referer);
+
+        if (isAudio) {
+            // audio segments are clear TS - passthrough
+            res.setHeader("Content-Type", "video/mp2t");
+            res.setHeader("Content-Length", raw.length);
+            return res.status(200).end(raw);
+        }
+
+        // decrypt; on garbage/stale key, force one fresh bootstrap + key
+        for (const force of [false, true]) {
+            try {
+                const key = await xs.getKey(state, force);
+                const plain = xs.decryptSegment(raw, index, key);
+                if (plain[0] !== 0x47) throw new Error("not TS after decrypt");
+                res.setHeader("Content-Type", "video/mp2t");
+                res.setHeader("Content-Length", plain.length);
+                return res.status(200).end(plain);
+            } catch (e) {
+                if (force) throw e;
+                // retry once with fresh bootstrap
+                try {
+                    state = await xs.bootstrap(data, u, true);
+                } catch (e2) {
+                    throw e;
+                }
+            }
+        }
+    } catch (e) {
+        console.error(`[xs/segment ${data.slice(0, 8)}/${i}]`, e.message);
+        if (!res.headersSent) res.status(502).send("xtremestream: " + e.message);
+    }
+});
 
 const addonInterface = builder.getInterface();
 const addonRouter = getRouter(addonInterface);

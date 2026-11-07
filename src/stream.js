@@ -6,6 +6,7 @@ const { getKayiFamilyStream, toAbsoluteEpisode, extractBestbStream, extractStrmu
 const { getKayiFamilyTVStream } = require("./kayifamilytv");
 const { canonicalSlug } = require("./catalog");
 const { extractKayihome, extractWakeupummah, extractVidara, buildProxyUrl } = require("./extractors/fireplayer");
+const { buildXsStreamUrl } = require("./extractors/xtremestream");
 
 const LOG_FILE = path.join(__dirname, "../debug_stream.log");
 
@@ -155,6 +156,51 @@ async function getOsmanOnlineStream(siteSlug, abs) {
     }
 }
 
+/**
+ * Source 4: osmanonline.live -> xtremestream.xyz (PeeStream XSFTK) players.
+ * Streams are AES-encrypted on the CDN; the /xs/* routes in index.js decrypt
+ * them on the fly, so this source always plays through the addon proxy.
+ */
+const LIVE_SLUG_MAP = {
+    "kudus-fatihi-selahaddin-eyyubi": "salahuddin-ayyubi-english-subtitles",
+    "alparslan-buyuk-selcuklu": "watch-alparslan-buyuk-selcuklu-with-english-subtitles"
+};
+
+async function getOsmanOnlineLiveStream(siteSlug, abs) {
+    const candidates = [...new Set([
+        LIVE_SLUG_MAP[siteSlug],
+        siteSlug,
+        `watch-${siteSlug}`,
+        `watch-${siteSlug}-with-english-subtitles`
+    ].filter(Boolean))];
+
+    for (const slug of candidates) {
+        const pageUrl = `https://osmanonline.live/${slug}-episode-${abs}/`;
+        try {
+            log(`Trying osmanonline.live: ${pageUrl}`);
+            const { data, status } = await axios.get(pageUrl, {
+                headers: { "User-Agent": UA },
+                timeout: 20000,
+                validateStatus: () => true
+            });
+            if (status !== 200) continue;
+
+            const embed = (typeof data === "string" ? data : "").match(
+                /https?:\/\/[a-z0-9.-]*xtremestream\.xyz\/player\/index\.php\?data=[a-f0-9]+/i
+            );
+            if (!embed) continue;
+
+            const proxyHost = process.env.RENDER_EXTERNAL_URL || `http://127.0.0.1:${process.env.PORT || 7000}`;
+            const streamUrl = await buildXsStreamUrl(embed[0], proxyHost);
+            log(`osmanonline.live stream via xtremestream (${embed[0].match(/data=([a-f0-9]+)/)[1].slice(0, 10)}…)`);
+            return { url: streamUrl, source: "osmanonline-live" };
+        } catch (err) {
+            log(`osmanonline.live error (${slug}): ${err.message}`);
+        }
+    }
+    return null;
+}
+
 async function getStream(type, id) {
     log(`getStream called for type=${type}, id=${id}`);
 
@@ -211,6 +257,22 @@ async function getStream(type, id) {
         }
     } catch (err) {
         log(`KayiFamilyTV fetch error: ${err.message}`);
+    }
+
+    // Source 4: osmanonline.live (xtremestream, up to 1080p - plays through
+    // the addon proxy because segments are AES-encrypted server-side)
+    try {
+        const liveStream = await getOsmanOnlineLiveStream(siteSlug, abs);
+        if (liveStream) {
+            streams.push({
+                name: "OsmanOnlineLive",
+                title: `Source 4: OsmanOnline.live 1080p (via addon proxy)`,
+                url: liveStream.url
+            });
+            log("Added OsmanOnlineLive stream");
+        }
+    } catch (err) {
+        log(`OsmanOnlineLive fetch error: ${err.message}`);
     }
 
     if (streams.length === 0) {
