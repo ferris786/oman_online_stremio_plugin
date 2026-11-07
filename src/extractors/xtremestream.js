@@ -62,7 +62,7 @@ function originOf(playerUrl) {
 async function fetchPage(playerUrl, referer) {
     const resp = await axios.get(playerUrl, {
         headers: { "User-Agent": UA, "Referer": referer || originOf(playerUrl) + "/" },
-        timeout: 20000,
+        timeout: 12000,
         httpAgent, httpsAgent,
         validateStatus: () => true
     });
@@ -80,7 +80,7 @@ function apiGet(origin, params, playerUrl) {
             "Referer": playerUrl,
             "X-XS-P": "1"
         },
-        timeout: 20000,
+        timeout: 12000,
         httpAgent, httpsAgent,
         responseType: "arraybuffer",
         validateStatus: () => true

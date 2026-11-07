@@ -180,7 +180,7 @@ async function getOsmanOnlineLiveStream(siteSlug, abs) {
             log(`Trying osmanonline.live: ${pageUrl}`);
             const { data, status } = await axios.get(pageUrl, {
                 headers: { "User-Agent": UA },
-                timeout: 20000,
+                timeout: 9000,
                 validateStatus: () => true
             });
             if (status !== 200) continue;
@@ -201,8 +201,27 @@ async function getOsmanOnlineLiveStream(siteSlug, abs) {
     return null;
 }
 
+// Resolved-stream cache: id -> { streams, ts }. Stream lists are stable for a
+// given episode, and every URL is served/proxied by this addon, so a short
+// cache makes repeat selections and player retries instant.
+const streamCache = new Map();
+const STREAM_CACHE_TTL = 10 * 60 * 1000;
+const STREAM_CACHE_MAX = 200;
+
+// Stremio shows an endless spinner when /stream takes too long. Sources are
+// resolved in parallel under a HARD DEADLINE: whatever is ready when the
+// deadline hits is what we return - a fast list with 2 sources beats a 60s
+// wait for all 4.
+const STREAM_DEADLINE_MS = 20000;
+
 async function getStream(type, id) {
     log(`getStream called for type=${type}, id=${id}`);
+
+    const cached = streamCache.get(id);
+    if (cached && (Date.now() - cached.ts) < STREAM_CACHE_TTL) {
+        log(`Returning ${cached.streams.length} cached stream(s)`);
+        return { streams: cached.streams };
+    }
 
     const resolved = resolveId(id);
     if (!resolved) {
@@ -212,37 +231,52 @@ async function getStream(type, id) {
     const { siteSlug, abs } = resolved;
     log(`Resolved: series=${siteSlug}, absolute episode=${abs}`);
 
-    // Resolve all four sources in parallel: stream-list latency is the
-    // slowest single source, not the sum of all of them.
-    const results = await Promise.allSettled([
-        getOsmanOnlineStream(siteSlug, abs),
-        getKayiFamilyStream(siteSlug, abs),
-        getKayiFamilyTVStream(siteSlug, abs),
-        getOsmanOnlineLiveStream(siteSlug, abs)
-    ]);
-
+    // Resolve all four sources in parallel under a hard deadline: the stream
+    // list arrives in the time of the slowest source THAT FITS the deadline,
+    // and anything still pending is simply skipped this round (the cache and
+    // the player's own retry will pick it up later).
     const defs = [
-        { name: "OsmanOnline", title: `Source 1: OsmanOnline (E${abs})` },
-        { name: "KayiFamily", title: `Source 2: KayiFamily (E${abs})` },
-        { name: "KayiFamilyTV", title: `Source 3: KayiFamilyTV (E${abs})` },
-        { name: "OsmanOnlineLive", title: "Source 4: OsmanOnline.live 1080p (via addon proxy)" }
+        { name: "OsmanOnline", title: `Source 1: OsmanOnline (E${abs})`, fn: () => getOsmanOnlineStream(siteSlug, abs) },
+        { name: "KayiFamily", title: `Source 2: KayiFamily (E${abs})`, fn: () => getKayiFamilyStream(siteSlug, abs) },
+        { name: "KayiFamilyTV", title: `Source 3: KayiFamilyTV (E${abs})`, fn: () => getKayiFamilyTVStream(siteSlug, abs) },
+        { name: "OsmanOnlineLive", title: "Source 4: OsmanOnline.live 1080p (via addon proxy)", fn: () => getOsmanOnlineLiveStream(siteSlug, abs) }
     ];
 
     const streams = [];
-    results.forEach((r, i) => {
-        const label = defs[i].name;
-        if (r.status === "fulfilled" && r.value && r.value.url) {
-            streams.push({ name: defs[i].name, title: defs[i].title, url: r.value.url });
-            log(`Added ${label} stream`);
-        } else if (r.status === "rejected") {
-            log(`${label} fetch error: ${r.reason && r.reason.message}`);
+    let done = 0;
+    const workers = defs.map(async (def) => {
+        try {
+            const value = await def.fn();
+            if (value && value.url) {
+                streams.push({ name: def.name, title: def.title, url: value.url });
+                log(`Added ${def.name} stream`);
+            }
+        } catch (err) {
+            log(`${def.name} fetch error: ${err && err.message}`);
+        } finally {
+            done++;
         }
     });
+
+    const deadline = new Promise(resolve => setTimeout(resolve, STREAM_DEADLINE_MS));
+    await Promise.race([Promise.all(workers), deadline]);
+
+    if (done < defs.length) {
+        log(`Deadline hit: ${done}/${defs.length} sources resolved, returning partial list`);
+    }
+
+    // Preserve canonical source order regardless of completion order
+    streams.sort((a, b) => defs.findIndex(d => d.name === a.name) - defs.findIndex(d => d.name === b.name));
 
     if (streams.length === 0) {
         log("No streams found from any source");
         return { streams: [] };
     }
+
+    if (streamCache.size > STREAM_CACHE_MAX) {
+        streamCache.delete(streamCache.keys().next().value);
+    }
+    streamCache.set(id, { streams, ts: Date.now() });
 
     log(`Returning ${streams.length} stream(s)`);
     return { streams };

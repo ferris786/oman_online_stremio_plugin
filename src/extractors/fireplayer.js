@@ -71,7 +71,7 @@ async function extractKayihome(iframeUrl) {
         const playerUrl = `https://kayihome.xyz/player/index.php?data=${dataMatch[1]}`;
         const { data: html, status } = await axios.get(playerUrl, {
             headers: { "User-Agent": UA, "Referer": "https://kayifamily.com/" },
-            timeout: 15000,
+            timeout: 10000,
             validateStatus: () => true
         });
 
@@ -138,7 +138,7 @@ async function extractWakeupummah(embedUrl, referrerSite) {
                     "Referer": embedUrl,
                     "Origin": "https://wakeupummah.com"
                 },
-                timeout: 15000,
+                timeout: 10000,
                 validateStatus: () => true
             }
         );
@@ -186,7 +186,7 @@ async function extractVidara(filecode, referer) {
                     "Referer": referer || "https://vidara.to/",
                     "Origin": "https://vidara.to"
                 },
-                timeout: 15000,
+                timeout: 10000,
                 validateStatus: () => true
             }
         );
