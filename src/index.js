@@ -38,7 +38,10 @@ builder.defineStreamHandler(async ({ type, id }) => {
 //   referer  - Referer header to send upstream (kayihome.xyz CDNs require the
 //              exact player page URL as referer; vidara segments are IP-locked)
 //   cookie   - Cookie header to send upstream (legacy turktvuk support)
-app.get("/proxy", async (req, res) => {
+//
+// Playlists are also served at /proxy/master.m3u8?url=... - a path ending in
+// .m3u8 so players that sniff HLS by URL path (ExoPlayer on Android TV) work.
+async function proxyHandler(req, res) {
     const targetUrl = req.query.url;
     const cookie = req.query.cookie;
     const referer = req.query.referer;
@@ -67,9 +70,6 @@ app.get("/proxy", async (req, res) => {
 
         const contentType = response.headers["content-type"];
         if (contentType) res.setHeader("Content-Type", contentType);
-        if (response.headers["content-length"]) res.setHeader("Content-Length", response.headers["content-length"]);
-        if (response.headers["content-range"]) res.setHeader("Content-Range", response.headers["content-range"]);
-        if (response.headers["accept-ranges"]) res.setHeader("Accept-Ranges", response.headers["accept-ranges"]);
 
         // Check if playlist to rewrite
         // .txt / .m3u8 / vnd.apple.mpegurl / kayihome /m3/ media playlists (served as text/plain)
@@ -113,7 +113,9 @@ app.get("/proxy", async (req, res) => {
                     return proxyPath;
                 });
 
-                res.send(rewritten);
+                res.setHeader("Content-Length", Buffer.byteLength(rewritten));
+                res.status(200);
+                res.end(rewritten);
             });
 
             response.data.on("error", (err) => {
@@ -124,6 +126,9 @@ app.get("/proxy", async (req, res) => {
         } else {
             // It's a media segment (TS, MP4, Key, etc.)
             // Just pipe it! This uses minimal RAM.
+            if (response.headers["content-length"]) res.setHeader("Content-Length", response.headers["content-length"]);
+            if (response.headers["content-range"]) res.setHeader("Content-Range", response.headers["content-range"]);
+            if (response.headers["accept-ranges"]) res.setHeader("Accept-Ranges", response.headers["accept-ranges"]);
             response.data.pipe(res);
 
             response.data.on("error", (err) => {
@@ -142,7 +147,10 @@ app.get("/proxy", async (req, res) => {
             if (!res.headersSent) res.status(500).send(e.message);
         }
     }
-});
+}
+
+app.get("/proxy", proxyHandler);
+app.get("/proxy/:filename", proxyHandler);
 
 
 const addonInterface = builder.getInterface();

@@ -44,12 +44,15 @@ function proxyHost() {
     return process.env.RENDER_EXTERNAL_URL || `http://127.0.0.1:${process.env.PORT || 7000}`;
 }
 
-// Build a proxy URL that keeps the referer (and optional cookie) for nested fetches
+// Build a proxy URL that keeps the referer (and optional cookie) for nested fetches.
+// Playlists are served from a path ending in .m3u8 (/proxy/master.m3u8) because
+// ExoPlayer on Android TV only engages HLS mode when the URL PATH looks like a
+// playlist - a ".m3u8" buried in the query string is not enough.
 function buildProxyUrl(targetUrl, { referer = "", cookie = "", isPlaylist = false } = {}) {
-    let p = `${proxyHost()}/proxy?url=${encodeURIComponent(targetUrl)}`;
+    const path = isPlaylist ? "/proxy/master.m3u8" : "/proxy";
+    let p = `${proxyHost()}${path}?url=${encodeURIComponent(targetUrl)}`;
     if (referer) p += `&referer=${encodeURIComponent(referer)}`;
     if (cookie) p += `&cookie=${encodeURIComponent(cookie)}`;
-    if (isPlaylist) p += `&.m3u8`;
     return p;
 }
 
