@@ -8,9 +8,9 @@ repo. Plays all four stream sources with TV-remote navigation.
 1. Install **Downloader** (by AFTVnews) from the Play Store on the TV
 2. Open Downloader and type exactly:
    ```
-   oman-online-stremio-plugin.onrender.com/apk
+   is.gd/turkishtv
    ```
-   (no https:// needed)
+   (short link -> redirects to the /apk download; no https:// needed)
 3. Downloader fetches `turkishtv.apk` → click Install (allow "unknown sources"
    for Downloader when the TV asks)
 
