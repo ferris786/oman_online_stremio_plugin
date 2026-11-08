@@ -24,7 +24,8 @@ class PlayerActivity : Activity() {
     private lateinit var sourceChipRow: LinearLayout
 
     data class PStream(val name: String, val title: String, val url: String,
-                        val hash: String = "", val dn: String = "")
+                        val hash: String = "", val dn: String = "",
+                        val cached: Boolean = true)
     private var streams: List<PStream> = emptyList()
     private var streamIndex = 0
     private var videoId: String = ""
@@ -54,7 +55,8 @@ class PlayerActivity : Activity() {
             for (i in 0 until arr.length()) {
                 val o = arr.getJSONObject(i)
                 list.add(PStream(o.optString("name"), o.optString("title"),
-                    o.optString("url"), o.optString("hash", ""), o.optString("dn", "")))
+                    o.optString("url"), o.optString("hash", ""), o.optString("dn", ""),
+                    o.optBoolean("cached", true)))
             }
             streams = list
             streamIndex = 0
@@ -157,7 +159,7 @@ class PlayerActivity : Activity() {
             return
         }
         if (s.url.isEmpty() && s.hash.isNotEmpty()) {
-            resolveLazy(s, -1L)
+            if (s.cached) resolveLazy(s, -1L) else resolveUncached(s)
             return
         }
         player.setMediaItem(MediaItem.fromUri(s.url))
@@ -211,6 +213,68 @@ class PlayerActivity : Activity() {
         }.start()
     }
 
+    /**
+     * Uncached source: ask TorBox to download it, show TV-friendly progress
+     * (percent + speed + cancel), then resolve and play when ready.
+     */
+    private fun resolveUncached(s: PStream) {
+        val key = Torbox.apiKey(this)
+        if (key == null) {
+            Toast.makeText(this, "Add your TorBox key in Settings first", Toast.LENGTH_LONG).show()
+            return
+        }
+        Toast.makeText(this, "Starting download: ${s.name}…", Toast.LENGTH_SHORT).show()
+
+        Thread {
+            val torrentId = Torbox.startDownload(key, s.hash, s.dn.ifEmpty { s.name })
+            if (torrentId <= 0) {
+                runOnUiThread {
+                    Toast.makeText(this, "Could not start download (plan limit reached?)", Toast.LENGTH_LONG).show()
+                }
+                return@Thread
+            }
+
+            // progress dialog (updated from the poll loop)
+            val dialog = android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog)
+                .setTitle("Downloading ${s.name}")
+                .setMessage("Connecting…")
+                .setNegativeButton("Cancel") { d, _ -> d.dismiss() }
+                .setCancelable(true)
+                .create()
+            var cancelled = false
+            runOnUiThread { dialog.show() }
+
+            val start = System.currentTimeMillis()
+            while (!cancelled && System.currentTimeMillis() - start < 30 * 60 * 1000) {
+                val p = Torbox.downloadProgress(key, torrentId)
+                if (p.ready) {
+                    runOnUiThread { dialog.dismiss() }
+                    val link = Torbox.resolveStream(key, s.hash, s.dn.ifEmpty { s.name })
+                    runOnUiThread {
+                        if (link.startsWith("http")) {
+                            playbackStarted = false
+                            player.setMediaItem(MediaItem.fromUri(link))
+                            player.prepare()
+                            player.playWhenReady = true
+                        } else {
+                            Toast.makeText(this, link, Toast.LENGTH_LONG).show()
+                        }
+                    }
+                    return@Thread
+                }
+                runOnUiThread {
+                    if (dialog.isShowing) {
+                        dialog.setMessage(
+                            "${p.percent}%  ·  ${String.format("%.1f", p.speedMbps)} MB/s\n" +
+                            "status: ${p.status}\n\nThe download continues in your TorBox account even if you cancel.")
+                    }
+                }
+                Thread.sleep(3000)
+            }
+            runOnUiThread { dialog.dismiss() }
+        }.start()
+    }
+
     private fun cycleSource(delta: Int) {
         if (streams.isEmpty()) return
         switchToSource((streamIndex + delta + streams.size) % streams.size)
@@ -229,7 +293,7 @@ class PlayerActivity : Activity() {
             return
         }
         if (s.url.isEmpty() && s.hash.isNotEmpty()) {
-            resolveLazy(s, player.currentPosition)
+            if (s.cached) resolveLazy(s, player.currentPosition) else resolveUncached(s)
             return
         }
         val pos = player.currentPosition

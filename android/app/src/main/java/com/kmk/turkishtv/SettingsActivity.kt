@@ -6,10 +6,13 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.CheckBox
 import android.widget.TextView
 import android.widget.Toast
 import coil.Coil
 import coil.request.ImageRequest
+import com.kmk.turkishtv.mux.MuxConfig
+import com.kmk.turkishtv.mux.QualityProfile
 
 class SettingsActivity : Activity() {
 
@@ -83,6 +86,35 @@ class SettingsActivity : Activity() {
                 polling = false
             }.start()
         }
+
+        // ---- Stream preferences (mux engine) ----
+        val balBtn = findViewById<Button>(R.id.profileBalanced)
+        val cinBtn = findViewById<Button>(R.id.profileCinema)
+        val dataBtn = findViewById<Button>(R.id.profileDataSaver)
+        val uncachedCb = findViewById<CheckBox>(R.id.showUncached)
+        val hide4kCb = findViewById<CheckBox>(R.id.hide4k)
+
+        var cfg = MuxConfig.load(this)
+        fun paintProfiles() {
+            val active = getDrawable(R.drawable.row_selector)
+            fun label(b: Button, on: Boolean) {
+                b.setTextColor(resources.getColor(if (on) R.color.accent else R.color.text_dim))
+            }
+            label(balBtn, cfg.profile == QualityProfile.BALANCED)
+            label(cinBtn, cfg.profile == QualityProfile.CINEMA)
+            label(dataBtn, cfg.profile == QualityProfile.DATA_SAVER)
+            balBtn.background = active; cinBtn.background = active; dataBtn.background = active
+        }
+        paintProfiles()
+        uncachedCb.isChecked = cfg.showUncached
+        hide4kCb.isChecked = cfg.hide4k
+
+        fun persist() = MuxConfig.save(this, cfg)
+        balBtn.setOnClickListener { cfg = cfg.copy(profile = QualityProfile.BALANCED); paintProfiles(); persist() }
+        cinBtn.setOnClickListener { cfg = cfg.copy(profile = QualityProfile.CINEMA); paintProfiles(); persist() }
+        dataBtn.setOnClickListener { cfg = cfg.copy(profile = QualityProfile.DATA_SAVER); paintProfiles(); persist() }
+        uncachedCb.setOnCheckedChangeListener { _, v -> cfg = cfg.copy(showUncached = v); persist() }
+        hide4kCb.setOnCheckedChangeListener { _, v -> cfg = cfg.copy(hide4k = v); persist() }
 
         testBtn.setOnClickListener {
             val key = input.text.toString().trim()

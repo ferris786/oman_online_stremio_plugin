@@ -97,6 +97,68 @@ object Torbox {
     }
 
     /**
+     * Uncached flow: start a TorBox download for a torrent and expose its id
+     * so the app can poll progress. Returns the torrent id or an error reason
+     * (prefixed "err:").
+     */
+    fun startDownload(key: String, hash: String, name: String): Long {
+        val magnet = "magnet:?xt=urn:btih:$hash&dn=${java.net.URLEncoder.encode(name, "UTF-8")}" +
+            "&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce"
+        return try {
+            val body = okhttp3.MultipartBody.Builder()
+                .setType(okhttp3.MultipartBody.FORM)
+                .addFormDataPart("magnet", magnet)
+                .addFormDataPart("seed", "2")
+                .build()
+            val create = call("$BASE/torrents/createtorrent", key, body)
+            val d = create.optJSONObject("data")
+            val id = d?.optLong("torrent_id", -1L) ?: -1L
+            if (id > 0) return id
+            // maybe already in the account - find by hash
+            val list = call("$BASE/torrents/mylist?limit=1000&bypass_cache=true", key)
+            val data = list.optJSONArray("data") ?: return -1L
+            for (i in 0 until data.length()) {
+                val t = data.optJSONObject(i) ?: continue
+                if (t.optString("hash", "").lowercase().contentEquals(hash.lowercase())) {
+                    return t.optLong("id", -1L)
+                }
+            }
+            -1L
+        } catch (e: Exception) {
+            -1L
+        }
+    }
+
+    /**
+     * Progress of a torrent download. Returns
+     * (progressPercent, downloadSpeedMbps, statusString, readyBoolean).
+     */
+    fun downloadProgress(key: String, torrentId: Long): DownloadProgress {
+        return try {
+            val list = call("$BASE/torrents/mylist?limit=1000&bypass_cache=true", key)
+            val data = list.optJSONArray("data")
+                ?: return DownloadProgress(0, 0.0, "list unreadable", false)
+            for (i in 0 until data.length()) {
+                val t = data.optJSONObject(i) ?: continue
+                if (t.optLong("id", -1L) != torrentId) continue
+                val progress = t.optDouble("progress", 0.0)
+                val speed = t.optDouble("download_speed", 0.0) / 1_000_000.0
+                val status = t.optString("status", "unknown")
+                val ready = t.optBoolean("cached") ||
+                    status.contains("completed", ignoreCase = true) ||
+                    (progress >= 100.0) ||
+                    (t.optString("download_state", "") == "completed")
+                return DownloadProgress(progress.toInt(), speed, status, ready)
+            }
+            DownloadProgress(0, 0.0, "not found", false)
+        } catch (e: Exception) {
+            DownloadProgress(0, 0.0, "error: ${e.message}", false)
+        }
+    }
+
+    data class DownloadProgress(val percent: Int, val speedMbps: Double, val status: String, val ready: Boolean)
+
+    /**
      * Resolve one cached torrent to a direct streaming URL.
      * Returns the http link on success, or a human-readable error reason.
      *

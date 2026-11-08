@@ -12,6 +12,8 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import coil.Coil
 import coil.request.ImageRequest
+import com.kmk.turkishtv.mux.MuxConfig
+import com.kmk.turkishtv.mux.MuxEngine
 import org.json.JSONObject
 
 /**
@@ -91,51 +93,38 @@ class MovieDetailActivity : Activity() {
                 val title = meta?.optString("name") ?: movie?.name ?: ""
                 val year = meta?.optString("year") ?: (movie?.year ?: "")
 
-                // Parallel discovery: YTS (exact IMDb), TPB from the device,
-                // and the addon's merged list - all at once. Lazy model: we
-                // list sources after ONE batched cached-check and only
-                // resolve the link for the source actually chosen (Comet-style).
-                var yts: List<Api.Torrent> = emptyList()
-                var tpb: List<Api.Torrent> = emptyList()
-                var addon: List<Api.Torrent> = emptyList()
-                val t1 = Thread { yts = Api.ytsByImdb(imdbId) }
-                val t2 = Thread { if (title.isNotEmpty()) tpb = Api.apibaySearch(title, year) }
-                val t3 = Thread { addon = try { Api.enTorrents(imdbId) } catch (e: Exception) { emptyList() } }
-                t1.start(); t2.start(); t3.start(); t1.join(); t2.join(); t3.join()
+                // AIOStreams-style mux: parallel providers -> parse -> dedupe ->
+                // batched cache check -> profile filter/sort -> uniform chips
+                val config = MuxConfig.load(this)
+                val result = MuxEngine.fetch(imdbId, title, year, key, config)
 
-                val candidates = (yts + tpb + addon)
-                    .distinctBy { it.hash }
-                    .sortedByDescending { t ->
-                        minOf(t.seeders, 200) +
-                        (if (t.quality.startsWith("1080p")) 120 else if (t.quality.startsWith("720p")) 60 else 0) +
-                        (if (t.sizeBytes in 1500000000L..9000000000L) 150 else 0)
+                if (result.streams.isEmpty()) {
+                    runOnUiThread {
+                        dlg.dismiss()
+                        Toast.makeText(this, "No sources found for this movie", Toast.LENGTH_LONG).show()
                     }
-                if (candidates.isEmpty()) throw Exception("no torrent sources found for this movie")
-
-                // one batched availability check -> instant chip list
-                val cached = Torbox.cachedHashes(key, candidates.map { it.hash })
-                val playable = candidates.filter { cached.contains(it.hash.lowercase()) }
-                if (playable.isEmpty()) {
+                    return@Thread
+                }
+                if (result.cachedCount == 0) {
                     runOnUiThread {
                         dlg.dismiss()
                         Toast.makeText(this,
-                            "None of the ${candidates.size} sources are cached on TorBox yet",
+                            "Nothing cached yet - ${result.uncachedCount} downloadable (⏳) sources listed",
                             Toast.LENGTH_LONG).show()
                     }
-                    return@Thread
                 }
 
                 runOnUiThread {
                     dlg.dismiss()
                     val arr = org.json.JSONArray()
-                    for (t in playable.take(8)) {
-                        val gb = t.sizeBytes / 1e9
+                    for (t in result.streams) {
                         arr.put(JSONObject()
-                            .put("name", t.quality)
-                            .put("title", "${t.quality} · ${String.format("%.1f", gb)}GB · ${t.seeders} seeds")
+                            .put("name", t.attrs.resolutionLabel)
+                            .put("title", t.formattedTitle())
                             .put("url", "")
                             .put("hash", t.hash)
-                            .put("dn", t.name))
+                            .put("dn", t.name)
+                            .put("cached", t.cached))
                     }
                     startActivity(Intent(this, PlayerActivity::class.java).apply {
                         putExtra("videoId", "movie:$imdbId")
