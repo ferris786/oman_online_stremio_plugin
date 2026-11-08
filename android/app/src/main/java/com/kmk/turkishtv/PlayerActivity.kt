@@ -21,7 +21,7 @@ class PlayerActivity : Activity() {
     private lateinit var player: ExoPlayer
     private lateinit var playerView: PlayerView
     private lateinit var sourceLabel: TextView
-    private lateinit var sourceChipRow: LinearLayout
+    private lateinit var sourcePill: TextView
 
     data class PStream(val name: String, val title: String, val url: String,
                         val hash: String = "", val dn: String = "",
@@ -39,7 +39,7 @@ class PlayerActivity : Activity() {
 
         playerView = findViewById(R.id.playerView)
         sourceLabel = findViewById(R.id.sourceLabel)
-        sourceChipRow = findViewById(R.id.sourceChipRow)
+        sourcePill = findViewById(R.id.sourceChips)
         videoId = intent.getStringExtra("videoId") ?: run { finish(); return }
 
         player = buildPlayer()
@@ -181,7 +181,7 @@ class PlayerActivity : Activity() {
             streamIndex++
         }
         streamIndex++
-        highlightChips()
+        updateSourcePill()
         playCurrent()
     }
 
@@ -287,7 +287,7 @@ class PlayerActivity : Activity() {
         playbackStarted = false
         val s = streams[streamIndex]
         sourceLabel.text = "${streamIndex + 1}/${streams.size} · ${s.name}"
-        highlightChips()
+        updateSourcePill()
         if (isYouTube(s.url)) {
             launchYouTube(s.url)
             playbackStarted = true
@@ -331,39 +331,99 @@ class PlayerActivity : Activity() {
     }
 
     private fun buildSourceChips() {
-        sourceChipRow.removeAllViews()
-        val density = resources.displayMetrics.density
-        streams.forEachIndexed { i, stream ->
-            val chip = TextView(this).apply {
-                text = "${i + 1} · ${stream.name}"
-                textSize = 13f
-                setTextColor(resources.getColor(R.color.text))
-                background = getDrawable(R.drawable.row_selector)
-                val h = (density * 8).toInt()
-                setPadding(h, h / 2, h, h / 2)
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply { marginEnd = (density * 6).toInt() }
-                setOnClickListener { switchToSource(i) }
-                setOnFocusChangeListener { _, hasFocus ->
-                    val scale = if (hasFocus) 1.1f else 1f
-                    animate().scaleX(scale).scaleY(scale).setDuration(120).start()
-                    translationZ = if (hasFocus) 10f else 0f
-                }
-            }
-            sourceChipRow.addView(chip)
+        updateSourcePill()
+        sourcePill.setOnClickListener { showSourceBrowser() }
+        sourcePill.setOnFocusChangeListener { _, hasFocus ->
+            val scale = if (hasFocus) 1.08f else 1f
+            sourcePill.animate().scaleX(scale).scaleY(scale).setDuration(120).start()
+            sourcePill.translationZ = if (hasFocus) 10f else 0f
         }
-        highlightChips()
     }
 
-    private fun highlightChips() {
-        for (i in 0 until sourceChipRow.childCount) {
-            val chip = sourceChipRow.getChildAt(i) as TextView
-            chip.setTextColor(resources.getColor(
-                if (i == streamIndex) R.color.accent else R.color.text))
+    private fun updateSourcePill() {
+        if (streams.isEmpty()) return
+        val cur = streams[streamIndex]
+        val badge = when {
+            isYouTube(cur.url) -> "▶"
+            cur.cached -> "⚡"
+            else -> "⏳"
         }
+        sourcePill.text = "◧  ${streams.size} sources · ${cur.name} $badge"
     }
+
+    /**
+     * Full source browser over the video: every source as a large row
+     * (same style as the pre-play picker) with the playing one marked.
+     */
+    private fun showSourceBrowser() {
+        if (streams.isEmpty()) return
+        val density = resources.displayMetrics.density
+        val pad = (density * 14).toInt()
+
+        val scroll = android.widget.ScrollView(this)
+        val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        scroll.addView(list)
+
+        streams.forEachIndexed { i, st ->
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                background = getDrawable(if (i == streamIndex) R.drawable.card_bg_focused else R.drawable.row_selector)
+                setPadding(pad, pad, pad, pad)
+                val m = (density * 6).toInt()
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { bottomMargin = m; leftMargin = m; rightMargin = m }
+
+                val badge = TextView(this@PlayerActivity).apply {
+                    text = when {
+                        i == streamIndex -> "▶"
+                        isYouTube(st.url) -> "▶"
+                        st.cached -> "⚡"
+                        else -> "⏳"
+                    }
+                    textSize = 20f
+                    setTextColor(resources.getColor(if (st.cached || i == streamIndex) R.color.accent else R.color.text_dim))
+                }
+                addView(badge)
+
+                val texts = LinearLayout(this@PlayerActivity).apply {
+                    orientation = LinearLayout.VERTICAL
+                    val mm = (density * 14).toInt()
+                    setPadding(mm, 0, 0, 0)
+                    addView(TextView(this@PlayerActivity).apply {
+                        text = st.name + if (i == streamIndex) "   (playing)" else ""
+                        textSize = 18f
+                        setTextColor(resources.getColor(R.color.text))
+                        paint.isFakeBoldText = true
+                    })
+                    addView(TextView(this@PlayerActivity).apply {
+                        text = st.title.substringAfter("·", st.title).trim()
+                        textSize = 13f
+                        setTextColor(resources.getColor(R.color.text_dim))
+                    })
+                }
+                addView(texts)
+
+                setOnClickListener { dialog?.dismiss(); switchToSource(i) }
+                isFocusable = true
+                isClickable = true
+                setOnFocusChangeListener { _, hasFocus ->
+                    val scale = if (hasFocus) 1.02f else 1f
+                    animate().scaleX(scale).scaleY(scale).setDuration(110).start()
+                }
+            }
+            list.addView(row)
+        }
+
+        dialog = android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog)
+            .setTitle("Sources (${streams.size})")
+            .setView(scroll)
+            .setNegativeButton("Close", null)
+            .show()
+    }
+
+    private var dialog: android.app.AlertDialog? = null
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         // Number keys 1-9 jump straight to a source
@@ -377,7 +437,7 @@ class PlayerActivity : Activity() {
         return when (keyCode) {
             KeyEvent.KEYCODE_CHANNEL_UP -> { cycleSource(1); true }
             KeyEvent.KEYCODE_CHANNEL_DOWN -> { cycleSource(-1); true }
-            KeyEvent.KEYCODE_MENU -> { cycleSource(1); true }
+            KeyEvent.KEYCODE_MENU -> { showSourceBrowser(); true }
             else -> super.onKeyDown(keyCode, event)
         }
     }

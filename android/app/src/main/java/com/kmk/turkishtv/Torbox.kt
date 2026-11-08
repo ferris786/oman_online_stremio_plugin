@@ -63,30 +63,54 @@ object Torbox {
      */
     fun cachedHashes(key: String, hashes: List<String>): Set<String> {
         if (hashes.isEmpty()) return emptySet()
-        return try {
-            val sb = StringBuilder("$BASE/torrents/checkcached?format=list")
-            for (h in hashes) sb.append("&hash=").append(h.lowercase())
-            val j = call(sb.toString(), key)
-            if (!j.optBoolean("success")) return emptySet()
-            val out = HashSet<String>()
-            val data = j.opt("data") ?: return emptySet()
-            when (data) {
-                is org.json.JSONArray -> for (i in 0 until data.length()) {
-                    val el = data.opt(i) ?: continue
-                    when (el) {
-                        is String -> if (el.isNotBlank()) out.add(el.lowercase())
-                        is org.json.JSONObject -> {
-                            val h = el.optString("hash", "")
-                            if (h.isNotBlank()) out.add(h.lowercase())
-                        }
+        // AIOStreams-style: instant-playable = cached on TorBox OR already in
+        // the user's account (library). Both checked in parallel.
+        var cached: Set<String> = emptySet()
+        var library: Set<String> = emptySet()
+        val t1 = Thread {
+            cached = try {
+                val sb = StringBuilder("$BASE/torrents/checkcached?format=list")
+                for (h in hashes) sb.append("&hash=").append(h.lowercase())
+                val j = call(sb.toString(), key)
+                parseHashSet(j)
+            } catch (e: Exception) { emptySet() }
+        }
+        val t2 = Thread {
+            library = try {
+                val list = call("$BASE/torrents/mylist?limit=1000", key)
+                val out = HashSet<String>()
+                val data = list.optJSONArray("data")
+                if (data != null) {
+                    for (i in 0 until data.length()) {
+                        val h = data.optJSONObject(i)?.optString("hash", "") ?: continue
+                        if (h.isNotBlank()) out.add(h.lowercase())
                     }
                 }
-                is org.json.JSONObject -> for (k in el_keys(data)) out.add(k.lowercase())
-            }
-            out
-        } catch (e: Exception) {
-            emptySet()
+                out
+            } catch (e: Exception) { emptySet() }
         }
+        t1.start(); t2.start(); t1.join(); t2.join()
+        return cached + library
+    }
+
+    private fun parseHashSet(j: JSONObject): Set<String> {
+        if (!j.optBoolean("success")) return emptySet()
+        val out = HashSet<String>()
+        val data = j.opt("data") ?: return emptySet()
+        when (data) {
+            is org.json.JSONArray -> for (i in 0 until data.length()) {
+                val el = data.opt(i) ?: continue
+                when (el) {
+                    is String -> if (el.isNotBlank()) out.add(el.lowercase())
+                    is org.json.JSONObject -> {
+                        val h = el.optString("hash", "")
+                        if (h.isNotBlank()) out.add(h.lowercase())
+                    }
+                }
+            }
+            is org.json.JSONObject -> for (k in el_keys(data)) out.add(k.lowercase())
+        }
+        return out
     }
 
     private fun el_keys(o: org.json.JSONObject): List<String> {

@@ -55,7 +55,7 @@ data class MuxConfig(
     val showUncached: Boolean = true,
     val hide4k: Boolean = false,
     val minSeeders: Int = 3,
-    val maxResults: Int = 12
+    val maxResults: Int = 30
 ) {
     /** Resolution preference order for this profile (lexicographic sort key) */
     fun resolutionOrder(): List<Int> = when (profile) {
