@@ -27,6 +27,11 @@ class SeriesActivity : Activity() {
     private lateinit var splash: View
     private var continueCollapsed = false
 
+    private lateinit var turkishPane: View
+    private lateinit var englishPane: View
+    private lateinit var tabTurkish: TextView
+    private lateinit var tabEnglish: TextView
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_series)
@@ -37,6 +42,23 @@ class SeriesActivity : Activity() {
         continueBar = findViewById(R.id.continueBar)
         splash = findViewById(R.id.splash)
 
+        turkishPane = findViewById(R.id.turkishPane)
+        englishPane = findViewById(R.id.englishPane)
+        tabTurkish = findViewById(R.id.tabTurkish)
+        tabEnglish = findViewById(R.id.tabEnglish)
+        findViewById<View>(R.id.settingsBtn).setOnClickListener {
+            startActivity(Intent(this, SettingsActivity::class.java))
+        }
+        tabTurkish.setOnClickListener { switchPane(true) }
+        tabEnglish.setOnClickListener { switchPane(false) }
+        findViewById<View>(R.id.enSearchBtn).setOnClickListener {
+            startActivity(Intent(this, SearchActivity::class.java))
+        }
+
+        // English movies grid (kept fully separate from Turkish)
+        val enGrid = findViewById<RecyclerView>(R.id.enGrid)
+        enGrid.layoutManager = GridLayoutManager(this, 6)
+
         grid.layoutManager = GridLayoutManager(this, 5)
         continueRow.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
 
@@ -45,6 +67,57 @@ class SeriesActivity : Activity() {
         showHistory()
         setupCollapseBehaviour()
         UpdateChecker.check(this)
+        loadEnglishMovies(enGrid)
+    }
+
+    private fun switchPane(turkish: Boolean) {
+        turkishPane.visibility = if (turkish) View.VISIBLE else View.GONE
+        englishPane.visibility = if (turkish) View.GONE else View.VISIBLE
+        tabTurkish.setTextColor(resources.getColor(if (turkish) R.color.accent else R.color.text_dim))
+        tabEnglish.setTextColor(resources.getColor(if (turkish) R.color.text_dim else R.color.accent))
+    }
+
+    private fun loadEnglishMovies(enGrid: RecyclerView) {
+        Thread {
+            try {
+                // first two catalog pages for a decent initial browse
+                val movies = Api.enCatalog("top", 0) + Api.enCatalog("top", 100)
+                runOnUiThread { enGrid.adapter = MovieGridAdapter(movies) }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    Toast.makeText(this, "Could not load movies: ${e.message}", Toast.LENGTH_LONG).show()
+                }
+            }
+        }.start()
+    }
+
+    private inner class MovieGridAdapter(private val items: List<Api.EnMovie>) :
+        RecyclerView.Adapter<MovieGridAdapter.VH>() {
+
+        inner class VH(v: View) : RecyclerView.ViewHolder(v) {
+            val name: TextView = v.findViewById(R.id.name)
+            val poster: android.widget.ImageView = v.findViewById(R.id.poster)
+        }
+
+        override fun onCreateViewHolder(parent: android.view.ViewGroup, viewType: Int): VH =
+            VH(layoutInflater.inflate(R.layout.item_series, parent, false))
+
+        override fun getItemCount() = items.size
+
+        override fun onBindViewHolder(holder: VH, position: Int) {
+            val m = items[position]
+            holder.name.text = if (m.year != null) "${m.name} (${m.year})" else m.name
+            loadPoster(holder.poster, m.poster)
+            applyFocusFx(holder.itemView)
+            holder.itemView.setOnClickListener {
+                startActivity(Intent(this@SeriesActivity, MovieDetailActivity::class.java).apply {
+                    putExtra("imdbId", m.id)
+                    putExtra("name", m.name)
+                    putExtra("poster", m.poster)
+                    putExtra("year", m.year)
+                })
+            }
+        }
     }
 
     /**

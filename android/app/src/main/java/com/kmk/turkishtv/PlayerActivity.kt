@@ -43,6 +43,23 @@ class PlayerActivity : Activity() {
         playerView.player = player
         setupSourceBarVisibility()
 
+        // Pre-resolved streams (English movies resolved through TorBox) are
+        // passed directly instead of hitting the addon /stream endpoint.
+        val preResolved = intent.getStringExtra("streamsJson")
+        if (preResolved != null) {
+            val arr = org.json.JSONArray(preResolved)
+            val list = ArrayList<Api.Stream>(arr.length())
+            for (i in 0 until arr.length()) {
+                val o = arr.getJSONObject(i)
+                list.add(Api.Stream(o.optString("name"), o.optString("title"), o.optString("url")))
+            }
+            streams = list
+            streamIndex = 0
+            buildSourceChips()
+            playCurrent()
+            return
+        }
+
         Thread {
             try {
                 val s = Api.streams(videoId)

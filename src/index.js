@@ -15,6 +15,7 @@ const manifest = require("./manifest");
 const { getSeries, getMeta } = require("./catalog");
 const { getStream } = require("./stream");
 const xs = require("./extractors/xtremestream");
+const en = require("./english");
 const urlModule = require("url");
 
 const app = express();
@@ -202,6 +203,52 @@ app.get(["/apk", "/app.apk"], (req, res) => {
     res.setHeader("Content-Type", "application/vnd.android.package-archive");
     res.setHeader("Content-Disposition", 'attachment; filename="turkishtv.apk"');
     res.sendFile(APK_PATH);
+});
+
+// ---------------------------------------------------------------------------
+// English Movies (Cinemeta + TPB candidates). TorBox resolution happens in
+// the app with the user's own API key - see src/english.js.
+// ---------------------------------------------------------------------------
+const enCatalogHandler = async (req, res) => {
+    try {
+        const { catalog } = req.params;
+        if (!/^[a-z-]+$/.test(catalog)) return res.status(400).json({ error: "bad catalog" });
+        const out = await en.enCatalog(catalog, req.params.skip);
+        res.setHeader("Cache-Control", "public, max-age=3600");
+        res.json(out);
+    } catch (e) {
+        res.status(502).json({ error: e.message });
+    }
+};
+app.get("/en/catalog/movie/:catalog", enCatalogHandler);
+app.get("/en/catalog/movie/:catalog/:skip", enCatalogHandler);
+
+app.get("/en/search/movie/:query", async (req, res) => {
+    try {
+        const out = await en.enSearch(req.params.query);
+        res.setHeader("Cache-Control", "public, max-age=3600");
+        res.json(out);
+    } catch (e) {
+        res.status(502).json({ error: e.message });
+    }
+});
+
+app.get("/en/meta/movie/:imdbId", async (req, res) => {
+    try {
+        const meta = await en.enMeta(req.params.imdbId);
+        res.json({ meta });
+    } catch (e) {
+        res.status(502).json({ error: e.message });
+    }
+});
+
+app.get("/en/torrents/movie/:imdbId", async (req, res) => {
+    try {
+        const out = await en.enTorrents(req.params.imdbId);
+        res.json(out);
+    } catch (e) {
+        res.status(502).json({ error: e.message });
+    }
 });
 
 // ---------------------------------------------------------------------------

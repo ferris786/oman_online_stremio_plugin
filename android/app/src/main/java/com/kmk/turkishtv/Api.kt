@@ -65,6 +65,52 @@ object Api {
         return out
     }
 
+    // ---------- English Movies (Cinemeta + TPB via our addon) ----------
+
+    data class EnMovie(val id: String, val name: String, val poster: String?, val year: String?)
+    data class Torrent(val name: String, val hash: String, val seeders: Int, val sizeBytes: Long, val quality: String)
+
+    fun enCatalog(catalog: String, skip: Int = 0): List<EnMovie> {
+        val url = Config.BASE_URL + "/en/catalog/movie/" + catalog +
+            (if (skip > 0) "/$skip" else "")
+        val metas = JSONObject(get(url)).getJSONArray("metas")
+        val out = ArrayList<EnMovie>(metas.length())
+        for (i in 0 until metas.length()) {
+            val m = metas.getJSONObject(i)
+            out.add(EnMovie(m.getString("id"), m.getString("name"),
+                if (m.isNull("poster")) null else m.optString("poster"),
+                if (m.isNull("year")) null else m.optString("year")))
+        }
+        return out
+    }
+
+    fun enSearch(query: String): List<EnMovie> {
+        val metas = JSONObject(get("/en/search/movie/" + encode(query))).getJSONArray("metas")
+        val out = ArrayList<EnMovie>(metas.length())
+        for (i in 0 until metas.length()) {
+            val m = metas.getJSONObject(i)
+            out.add(EnMovie(m.getString("id"), m.getString("name"),
+                if (m.isNull("poster")) null else m.optString("poster"),
+                if (m.isNull("year")) null else m.optString("year")))
+        }
+        return out
+    }
+
+    fun enMeta(imdbId: String): JSONObject {
+        return JSONObject(get("/en/meta/movie/" + encode(imdbId))).getJSONObject("meta")
+    }
+
+    fun enTorrents(imdbId: String): List<Torrent> {
+        val arr = JSONObject(get("/en/torrents/movie/" + encode(imdbId))).getJSONArray("torrents")
+        val out = ArrayList<Torrent>(arr.length())
+        for (i in 0 until arr.length()) {
+            val t = arr.getJSONObject(i)
+            out.add(Torrent(t.getString("name"), t.getString("hash"),
+                t.optInt("seeders", 0), t.optLong("sizeBytes", 0), t.optString("quality", "")))
+        }
+        return out
+    }
+
     private fun encode(s: String): String {
         return java.net.URLEncoder.encode(s, "UTF-8").replace("+", "%20")
     }
