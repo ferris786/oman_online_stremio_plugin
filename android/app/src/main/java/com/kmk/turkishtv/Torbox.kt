@@ -230,23 +230,45 @@ object Torbox {
                     val files = t.optJSONArray("files")
                     if (files == null || files.length() == 0) break // metadata pending - retry
 
-                    var bestId = -1L
-                    var bestSize = -1L
+                    // Pick the real movie file. TorBox sometimes reports all
+                    // file sizes as 0 - picking "largest by size" then lands
+                    // on junk (samples/trailers) and playback fails on every
+                    // retry. Strategy: real videos with sane sizes first;
+                    // fall back to name heuristics when sizes are unknown.
+                    data class Pick(val id: Long, val size: Long, val score: Int)
+                    var best: Pick? = null
+                    val releaseName = t.optString("name", "").lowercase()
                     for (f in 0 until files.length()) {
                         val file = files.optJSONObject(f) ?: continue
                         val fname = file.optString("name", "").lowercase()
+                        if (fname.isEmpty()) continue
                         val isVideo = fname.endsWith(".mp4") || fname.endsWith(".mkv") ||
                             fname.endsWith(".avi") || fname.endsWith(".ts") ||
                             fname.endsWith(".m2ts") || fname.endsWith(".wmv") ||
                             fname.endsWith(".mov") || fname.endsWith(".mpg") ||
                             fname.endsWith(".mpeg") || fname.endsWith(".flv")
                         if (!isVideo) continue
+                        // junk heuristics
+                        val junk = fname.contains("sample") || fname.contains("trailer") ||
+                            fname.contains("proof") || fname.contains("extra") ||
+                            fname.contains("featurette")
+                        var score = 0
+                        if (junk) score -= 100
                         val size = file.optLong("size", 0)
-                        if (size > bestSize) {
-                            bestSize = size
-                            bestId = file.optLong("id")
-                        }
+                        if (size > 100_000_000L) score += 50       // definitely a real movie file
+                        if (size == 0L) score -= 10                 // size unknown
+                        // name similarity to the release name helps when all sizes are 0
+                        val norm = { x: String -> x.replace(Regex("[^a-z0-9]"), "") }
+                        val fn = norm(fname); val rn = norm(releaseName)
+                        if (rn.length > 8 && fn.length > 8 && (fn.contains(rn.substring(0, 12)) || rn.contains(fn.substring(0, 12)))) score += 20
+                        val candidate = Pick(file.optLong("id"), size, score)
+                        // compare: score first, then size, then prefer .mp4/.mkv
+                        val better = best == null ||
+                            candidate.score > best!!.score ||
+                            (candidate.score == best!!.score && candidate.size > best!!.size)
+                        if (better) best = candidate
                     }
+                    val bestId = best?.id ?: -1L
                     if (bestId > 0) {
                         // 3. direct link (token query param is required by the API)
                         val torrentId = if (t.optLong("id", -1) > 0) t.optLong("id") else knownTorrentId
