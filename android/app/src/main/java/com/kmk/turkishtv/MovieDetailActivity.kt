@@ -131,6 +131,7 @@ class MovieDetailActivity : Activity() {
                         putExtra("videoId", "movie:$imdbId")
                         putExtra("videoTitle", movie?.name)
                         putExtra("streamsJson", arr.toString())
+                        putStringArrayListExtra("providers", ArrayList(result.providers))
                     })
                 }
             } catch (e: Exception) {

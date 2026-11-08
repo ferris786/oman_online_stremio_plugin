@@ -42,8 +42,10 @@ class SourcePickerActivity : Activity() {
         }
         rows = list
         val cached = list.count { it.cached }
+        val providers = intent.getStringArrayListExtra("providers")?.joinToString(" + ") ?: ""
         findViewById<TextView>(R.id.pickerSub).text =
-            "${list.size} sources · $cached instant ⚡ · ${list.size - cached} download ⏳"
+            "${list.size} sources · $cached instant ⚡ · ${list.size - cached} download ⏳" +
+            (if (providers.isNotEmpty()) "\n$providers" else "")
 
         val recycler = findViewById<RecyclerView>(R.id.pickerList)
         recycler.layoutManager = LinearLayoutManager(this)

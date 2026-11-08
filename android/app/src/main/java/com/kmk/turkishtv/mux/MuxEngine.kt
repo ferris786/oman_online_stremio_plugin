@@ -20,7 +20,8 @@ object MuxEngine {
         val streams: List<MuxStream>,     // sorted, formatted, ready for chips
         val cachedCount: Int,
         val uncachedCount: Int,
-        val providerCount: Int
+        val providerCount: Int,
+        val providers: List<String> = emptyList()
     )
 
     fun fetch(
@@ -80,21 +81,51 @@ object MuxEngine {
             true
         }
 
-        // ---- 6. lexicographic sort ----
+        // ---- 6. lexicographic sort, then DIVERSITY-AWARE selection ----
+        // Sorting cached-first buries uncached 4K under a wall of cached
+        // 1080p (measured: 19 4K streams, 0 in the top 12). Instead: sort
+        // within each resolution tier, then round-robin the tiers in profile
+        // order so every quality that exists is REPRESENTED - cached rows
+        // still lead each tier.
         val resOrder = config.resolutionOrder()
-        val sorted = all.sortedWith(
-            compareByDescending<MuxStream> { it.cached }
-                .thenBy { resOrder.indexOf(it.attrs.resolution).let { if (it < 0) 99 else it } }
-                .thenByDescending { it.seeders }
-                .thenBy { it.sizeBytes }
-        ).take(config.maxResults)
+        fun tierSort(a: MuxStream, b: MuxStream): Int = compareValuesBy(
+            a, b,
+            { if (it.cached) 0 else 1 },        // cached first within tier
+            { -it.seeders },                    // more seeders first
+            { it.sizeBytes }                    // smaller first
+        )
 
-        val cachedCount = sorted.count { it.cached }
+        val tiers = resOrder
+            .map { r -> all.filter { it.attrs.resolution == r }.sortedWith(::tierSort) }
+            .filter { it.isNotEmpty() }
+
+        val picked = ArrayList<MuxStream>(config.maxResults)
+        var round = 0
+        while (picked.size < config.maxResults) {
+            var added = false
+            for (tier in tiers) {
+                if (round < tier.size) {
+                    picked.add(tier[round])
+                    added = true
+                    if (picked.size >= config.maxResults) break
+                }
+            }
+            if (!added) break
+            round++
+        }
+
+        val cachedCount = picked.count { it.cached }
+        val providers = mutableListOf<String>()
+        if (tor.isNotEmpty()) providers.add("Torrentio")
+        if (yts.isNotEmpty()) providers.add("YTS")
+        if (tpb.isNotEmpty()) providers.add("TPB")
+        if (addon.isNotEmpty()) providers.add("SRV")
         return Result(
-            streams = sorted,
+            streams = picked,
             cachedCount = cachedCount,
-            uncachedCount = sorted.size - cachedCount,
-            providerCount = listOf(tor, yts, tpb, addon).count { it.isNotEmpty() }
+            uncachedCount = picked.size - cachedCount,
+            providerCount = providers.size,
+            providers = providers
         )
     }
 
