@@ -31,7 +31,7 @@ object Torbox {
             .edit().putString("torbox_key", key.trim()).apply()
     }
 
-    private fun call(url: String, key: String, post: FormBody? = null): JSONObject {
+    private fun call(url: String, key: String, post: okhttp3.RequestBody? = null): JSONObject {
         val req = Request.Builder()
             .url(url)
             .header("Authorization", "Bearer $key")
@@ -97,36 +97,46 @@ object Torbox {
     }
 
     /**
-     * Resolve one cached torrent to a direct streaming URL:
-     * create (idempotent) -> find in mylist by hash -> pick the largest
-     * video file -> request a direct link.
+     * Resolve one cached torrent to a direct streaming URL.
+     * Returns the http link on success, or a human-readable error reason.
+     *
+     * Per the TorBox OpenAPI spec:
+     *  - createtorrent expects multipart/form-data
+     *  - mylist is served from a server-side cache; after creating, poll
+     *    with bypass_cache=true or the new torrent never appears
+     *  - requestdl REQUIRES the API token as a ?token= query parameter
      */
-    fun resolveStream(key: String, hash: String, name: String): String? {
+    fun resolveStream(key: String, hash: String, name: String): String {
         val magnet = "magnet:?xt=urn:btih:$hash&dn=${java.net.URLEncoder.encode(name, "UTF-8")}" +
             "&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce"
 
-        // 1. create (or re-use) the torrent in the account; the response may
-        // carry the torrent_id directly, which saves a mylist scan
+        // 1. create (or re-use) the torrent in the account
         var knownTorrentId = -1L
         try {
-            val create = call("$BASE/torrents/createtorrent", key,
-                FormBody.Builder().add("magnet", magnet).add("seed", "2").build())
+            val body = okhttp3.MultipartBody.Builder()
+                .setType(okhttp3.MultipartBody.FORM)
+                .addFormDataPart("magnet", magnet)
+                .addFormDataPart("seed", "2")
+                .build()
+            val create = call("$BASE/torrents/createtorrent", key, body)
             val d = create.optJSONObject("data")
-            if (d != null) {
-                knownTorrentId = d.optLong("torrent_id", -1L)
-            }
-        } catch (e: Exception) { /* may already exist */ }
+            if (d != null) knownTorrentId = d.optLong("torrent_id", -1L)
+        } catch (e: Exception) {
+            // usually "already exists" - continue to the list scan
+        }
 
-        // 2. find it in the list (a couple of retries for propagation)
-        repeat(4) { attempt ->
+        // 2. find it in mylist (bypass_cache so freshly added torrents show)
+        repeat(5) { attempt ->
             try {
-                val list = call("$BASE/torrents/mylist?limit=1000", key)
-                val data = list.optJSONArray("data") ?: return null
+                val list = call("$BASE/torrents/mylist?limit=1000&bypass_cache=true", key)
+                val data = list.optJSONArray("data")
+                    ?: return "TorBox list unreadable: ${list.optString("error", "?")}"
                 for (i in 0 until data.length()) {
                     val t = data.optJSONObject(i) ?: continue
                     if (!t.optString("hash", "").lowercase().contentEquals(hash.lowercase())) continue
 
-                    val files = t.optJSONArray("files") ?: continue
+                    val files = t.optJSONArray("files")
+                        ?: return "Torrent has no files yet (not fully cached)"
                     var bestId = -1L
                     var bestSize = -1L
                     for (f in 0 until files.length()) {
@@ -139,18 +149,20 @@ object Torbox {
                             bestId = file.optLong("id")
                         }
                     }
-                    if (bestId > 0) {
-                        // 3. direct link
-                        val dl = call("$BASE/torrents/requestdl?torrent_id=${t.optLong("id", knownTorrentId)}&file_id=$bestId", key)
-                        val link = dl.optString("data")
-                        if (link.startsWith("http")) return link
-                        return null
-                    }
-                    return null
+                    if (bestId <= 0) return "No video file in this torrent"
+
+                    // 3. direct link (token query param is required by the API)
+                    val torrentId = if (t.optLong("id", -1) > 0) t.optLong("id") else knownTorrentId
+                    val dl = call("$BASE/torrents/requestdl?token=$key&torrent_id=$torrentId&file_id=$bestId", key)
+                    val link = dl.optString("data")
+                    if (link.startsWith("http")) return link
+                    return "TorBox refused download: ${dl.optString("error", dl.optString("detail", "?"))}"
                 }
-            } catch (e: Exception) { /* retry */ }
-            if (attempt < 3) Thread.sleep(1200)
+            } catch (e: Exception) {
+                // transient - retry
+            }
+            Thread.sleep(1000)
         }
-        return null
+        return "Torrent never appeared in your TorBox list (plan limit reached?)"
     }
 }

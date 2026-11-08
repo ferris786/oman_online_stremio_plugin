@@ -91,15 +91,14 @@ class MovieDetailActivity : Activity() {
 
         Thread {
             try {
-                var candidates = Api.enTorrents(imdbId)
-                if (candidates.isEmpty()) {
-                    // addon's server IP may be blocked by the indexer - the
-                    // TV's own connection usually is not
-                    val title = meta?.optString("name") ?: movie?.name ?: ""
-                    val year = meta?.optString("year") ?: (movie?.year ?: "")
-                    if (title.isNotEmpty()) candidates = Api.apibaySearch(title, year)
-                }
-                if (candidates.isEmpty()) throw Exception("no torrents found for this movie")
+                val title = meta?.optString("name") ?: movie?.name ?: ""
+                val year = meta?.optString("year") ?: (movie?.year ?: "")
+
+                // Direct apibay search from the TV FIRST - fastest path and
+                // not datacenter-blocked. The addon's list is the fallback.
+                var candidates = if (title.isNotEmpty()) Api.apibaySearch(title, year) else emptyList()
+                if (candidates.isEmpty()) candidates = Api.enTorrents(imdbId)
+                if (candidates.isEmpty()) throw Exception("no torrent sources found for this movie")
 
                 val cached = Torbox.cachedHashes(key, candidates.map { it.hash })
                 val playable = candidates.filter { cached.contains(it.hash.lowercase()) }
@@ -107,25 +106,29 @@ class MovieDetailActivity : Activity() {
                     runOnUiThread {
                         dlg.dismiss()
                         Toast.makeText(this,
-                            "Not cached on TorBox yet - try again later or another title",
+                            "None of the ${candidates.size} sources are cached on TorBox yet",
                             Toast.LENGTH_LONG).show()
                     }
                     return@Thread
                 }
 
-                // resolve the best (up to 4) to direct links
+                // resolve the best (up to 3) to direct links; failures now
+                // carry the real TorBox reason
                 val streams = ArrayList<PlayStream>()
-                for (t in playable.take(4)) {
-                    val url = Torbox.resolveStream(key, t.hash, t.name)
-                    if (url != null) {
+                var lastError: String? = null
+                for (t in playable.take(3)) {
+                    val result = Torbox.resolveStream(key, t.hash, t.name)
+                    if (result.startsWith("http")) {
                         val gb = t.sizeBytes / 1e9
                         streams.add(PlayStream(
                             name = "${t.quality}",
                             title = "${t.quality} · ${String.format("%.1f", gb)}GB · ${t.seeders} seeds",
-                            url = url))
+                            url = result))
+                    } else {
+                        lastError = result
                     }
                 }
-                if (streams.isEmpty()) throw Exception("could not resolve any link")
+                if (streams.isEmpty()) throw Exception(lastError ?: "could not resolve any link")
 
                 runOnUiThread {
                     dlg.dismiss()

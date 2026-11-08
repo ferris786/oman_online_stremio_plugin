@@ -131,7 +131,7 @@ async function enTorrents(imdbId) {
     const byHash = new Map();
     for (const q of queries) {
         try {
-            const list = await fetchJson(q, 10000);
+            const list = await fetchJson(q, 3000);
             if (!Array.isArray(list)) continue;
             for (const r of list) {
                 if (!r || !r.info_hash || r.name === "No results returned") continue;
