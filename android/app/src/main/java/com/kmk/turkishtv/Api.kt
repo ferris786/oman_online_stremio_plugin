@@ -112,6 +112,37 @@ object Api {
     }
 
     /**
+     * Torrentio as a provider (the AIOStreams approach): its public stream
+     * endpoint aggregates dozens of indexers. We harvest infoHashes +
+     * release names + seeds/size, then run our own TorBox cache check on
+     * them. Title format: "ReleaseName\n👤 seeds 💾 size ⚙️ indexer".
+     */
+    fun torrentioMovie(imdbId: String): List<Torrent> {
+        val out = ArrayList<Torrent>()
+        try {
+            val body = rawGet("https://torrentio.strem.fun/stream/movie/" + encode(imdbId) + ".json")
+            val streams = JSONObject(body).optJSONArray("streams") ?: return out
+            for (i in 0 until streams.length()) {
+                val st = streams.optJSONObject(i) ?: continue
+                val hash = st.optString("infoHash", "").lowercase()
+                if (hash.length < 20) continue
+                val title = st.optString("title", "")
+                val name = title.substringBefore("\n").trim()
+                if (name.isEmpty()) continue
+                val seeds = Regex("👤\\s*(\\d+)").find(title)?.groupValues?.get(1)?.toIntOrNull() ?: 1
+                val sizeStr = Regex("💾\\s*([\\d.]+)\\s*(GB|MB)").find(title)
+                val size = when (sizeStr?.groupValues?.get(2)) {
+                    "GB" -> (sizeStr.groupValues[1].toDouble() * 1e9).toLong()
+                    "MB" -> (sizeStr.groupValues[1].toDouble() * 1e6).toLong()
+                    else -> 0L
+                }
+                out.add(Torrent(name, hash, seeds, size, ""))
+            }
+        } catch (e: Exception) { /* torrentio unreachable */ }
+        return out
+    }
+
+    /**
      * Direct YTS lookup by IMDb id from the DEVICE - exact movie match with
      * every quality tier (720p/1080p/2160p). Used in the fallback path when
      * the addon's server IP is blocked by indexes.

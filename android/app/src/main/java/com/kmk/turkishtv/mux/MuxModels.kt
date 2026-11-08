@@ -33,7 +33,11 @@ data class MuxStream(
     /** AIOStreams-style uniform chip title */
     fun formattedTitle(): String {
         val gb = sizeBytes / 1e9
-        val size = if (gb >= 1) String.format("%.1fGB", gb) else "${sizeBytes / 1048576}MB"
+        val size = when {
+            sizeBytes <= 0 -> "—"
+            gb >= 1 -> String.format("%.1fGB", gb)
+            else -> "${sizeBytes / 1048576}MB"
+        }
         val bits = listOfNotNull(
             attrs.resolutionLabel,
             attrs.quality.takeIf { it.isNotBlank() },
@@ -51,7 +55,7 @@ data class MuxConfig(
     val showUncached: Boolean = true,
     val hide4k: Boolean = false,
     val minSeeders: Int = 3,
-    val maxResults: Int = 10
+    val maxResults: Int = 12
 ) {
     /** Resolution preference order for this profile (lexicographic sort key) */
     fun resolutionOrder(): List<Int> = when (profile) {
@@ -68,8 +72,8 @@ data class MuxConfig(
             else -> 4_000_000_000L
         }
         else -> when (resolution) {
-            2160 -> 45_000_000_000L
-            1080 -> 15_000_000_000L
+            2160 -> 60_000_000_000L   // user prefers chunky 10-30GB encodes
+            1080 -> 30_000_000_000L
             else -> 0L
         }
     }

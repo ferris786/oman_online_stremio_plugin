@@ -31,14 +31,17 @@ object MuxEngine {
         config: MuxConfig
     ): Result {
         // ---- 1. parallel provider fetch (device-side: not DC-blocked) ----
+        var tor: List<Api.Torrent> = emptyList()
         var yts: List<Api.Torrent> = emptyList()
         var tpb: List<Api.Torrent> = emptyList()
         var addon: List<Api.Torrent> = emptyList()
 
+        val t0 = Thread { tor = try { Api.torrentioMovie(imdbId) } catch (e: Exception) { emptyList() } }
         val t1 = Thread { yts = try { Api.ytsByImdb(imdbId) } catch (e: Exception) { emptyList() } }
         val t2 = Thread { if (title.isNotEmpty()) tpb = try { Api.apibaySearch(title, year) } catch (e: Exception) { emptyList() } }
         val t3 = Thread { addon = try { Api.enTorrents(imdbId) } catch (e: Exception) { emptyList() } }
-        t1.start(); t2.start(); t3.start(); t1.join(); t2.join(); t3.join()
+        t0.start(); t1.start(); t2.start(); t3.start()
+        t0.join(); t1.join(); t2.join(); t3.join()
 
         // ---- 2. parse + 3. dedupe by infohash (provider priority: YTS > TPB > ADDON) ----
         val byHash = LinkedHashMap<String, MuxStream>()
@@ -53,6 +56,7 @@ object MuxEngine {
                 )
             }
         }
+        ingest(tor, "TOR")
         ingest(yts, "YTS")
         ingest(tpb, "TPB")
         ingest(addon, "SRV")
@@ -90,7 +94,7 @@ object MuxEngine {
             streams = sorted,
             cachedCount = cachedCount,
             uncachedCount = sorted.size - cachedCount,
-            providerCount = listOf(yts, tpb, addon).count { it.isNotEmpty() }
+            providerCount = listOf(tor, yts, tpb, addon).count { it.isNotEmpty() }
         )
     }
 

@@ -172,8 +172,9 @@ object Torbox {
         val magnet = "magnet:?xt=urn:btih:$hash&dn=${java.net.URLEncoder.encode(name, "UTF-8")}" +
             "&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce"
 
-        // 1. create (or re-use) the torrent in the account
+        // 1. create (or re-use) the torrent in the account; surface real errors
         var knownTorrentId = -1L
+        var createError: String? = null
         try {
             val body = okhttp3.MultipartBody.Builder()
                 .setType(okhttp3.MultipartBody.FORM)
@@ -183,12 +184,17 @@ object Torbox {
             val create = call("$BASE/torrents/createtorrent", key, body)
             val d = create.optJSONObject("data")
             if (d != null) knownTorrentId = d.optLong("torrent_id", -1L)
+            if (!create.optBoolean("success")) {
+                createError = create.optString("error", create.optString("detail", ""))
+            }
         } catch (e: Exception) {
             // usually "already exists" - continue to the list scan
         }
 
-        // 2. find it in mylist (bypass_cache so freshly added torrents show)
-        repeat(5) { attempt ->
+        // 2. find it in mylist (bypass_cache so freshly added torrents show).
+        //    Poll up to 8x1.5s: empty file lists mean metadata is still being
+        //    fetched - retry instead of failing.
+        repeat(8) { attempt ->
             try {
                 val list = call("$BASE/torrents/mylist?limit=1000&bypass_cache=true", key)
                 val data = list.optJSONArray("data")
@@ -198,33 +204,44 @@ object Torbox {
                     if (!t.optString("hash", "").lowercase().contentEquals(hash.lowercase())) continue
 
                     val files = t.optJSONArray("files")
-                        ?: return "Torrent has no files yet (not fully cached)"
+                    if (files == null || files.length() == 0) break // metadata pending - retry
+
                     var bestId = -1L
                     var bestSize = -1L
                     for (f in 0 until files.length()) {
                         val file = files.optJSONObject(f) ?: continue
                         val fname = file.optString("name", "").lowercase()
-                        if (!(fname.endsWith(".mp4") || fname.endsWith(".mkv"))) continue
+                        val isVideo = fname.endsWith(".mp4") || fname.endsWith(".mkv") ||
+                            fname.endsWith(".avi") || fname.endsWith(".ts") ||
+                            fname.endsWith(".m2ts") || fname.endsWith(".wmv") ||
+                            fname.endsWith(".mov") || fname.endsWith(".mpg") ||
+                            fname.endsWith(".mpeg") || fname.endsWith(".flv")
+                        if (!isVideo) continue
                         val size = file.optLong("size", 0)
                         if (size > bestSize) {
                             bestSize = size
                             bestId = file.optLong("id")
                         }
                     }
-                    if (bestId <= 0) return "No video file in this torrent"
-
-                    // 3. direct link (token query param is required by the API)
-                    val torrentId = if (t.optLong("id", -1) > 0) t.optLong("id") else knownTorrentId
-                    val dl = call("$BASE/torrents/requestdl?token=$key&torrent_id=$torrentId&file_id=$bestId", key)
-                    val link = dl.optString("data")
-                    if (link.startsWith("http")) return link
-                    return "TorBox refused download: ${dl.optString("error", dl.optString("detail", "?"))}"
+                    if (bestId > 0) {
+                        // 3. direct link (token query param is required by the API)
+                        val torrentId = if (t.optLong("id", -1) > 0) t.optLong("id") else knownTorrentId
+                        val dl = call("$BASE/torrents/requestdl?token=$key&torrent_id=$torrentId&file_id=$bestId", key)
+                        val link = dl.optString("data")
+                        if (link.startsWith("http")) return link
+                        return "TorBox refused download: ${dl.optString("error", dl.optString("detail", "?"))}"
+                    }
+                    // files listed but no video in them - genuinely a pack of
+                    // other stuff; only fail on the LAST attempt
+                    if (attempt == 7) return "No video file in this torrent"
+                    break // retry in case listing updates
                 }
             } catch (e: Exception) {
                 // transient - retry
             }
-            Thread.sleep(1000)
+            Thread.sleep(1500)
         }
-        return "Torrent never appeared in your TorBox list (plan limit reached?)"
+        return createError?.let { "TorBox: $it" }
+            ?: "Torrent never appeared in your TorBox list (plan limit reached?)"
     }
 }
