@@ -108,6 +108,19 @@ class PlayerActivity : Activity() {
             }
     }
 
+    private fun isYouTube(url: String): Boolean =
+        url.contains("youtube.com") || url.contains("youtu.be")
+
+    private fun launchYouTube(url: String) {
+        try {
+            startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW,
+                android.net.Uri.parse(url)).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+            Toast.makeText(this, "Opening in YouTube…", Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            Toast.makeText(this, "YouTube app required for this episode", Toast.LENGTH_LONG).show()
+        }
+    }
+
     private fun playCurrent(resumeMs: Long = -1L) {
         if (streamIndex >= streams.size) {
             Toast.makeText(this, "All sources failed", Toast.LENGTH_LONG).show()
@@ -117,6 +130,11 @@ class PlayerActivity : Activity() {
         val s = streams[streamIndex]
         playbackStarted = false
         sourceLabel.text = "${streamIndex + 1}/${streams.size} · ${s.name}"
+        if (isYouTube(s.url)) {
+            launchYouTube(s.url)
+            playbackStarted = true // don't let auto-fallback fire the intent
+            return
+        }
         player.setMediaItem(MediaItem.fromUri(s.url))
         player.prepare()
         val pos = if (resumeMs >= 0) resumeMs else WatchState.getPosition(this, videoId)
@@ -129,6 +147,11 @@ class PlayerActivity : Activity() {
 
     private fun tryNextSource(reason: String) {
         Toast.makeText(this, "$reason - trying next source…", Toast.LENGTH_SHORT).show()
+        // skip YouTube entries during auto-fallback: opening another app
+        // should be a deliberate choice (chip or number key), not a surprise
+        while (streamIndex + 1 < streams.size && isYouTube(streams[streamIndex + 1].url)) {
+            streamIndex++
+        }
         streamIndex++
         highlightChips()
         playCurrent()
@@ -146,6 +169,11 @@ class PlayerActivity : Activity() {
         val s = streams[streamIndex]
         sourceLabel.text = "${streamIndex + 1}/${streams.size} · ${s.name}"
         highlightChips()
+        if (isYouTube(s.url)) {
+            launchYouTube(s.url)
+            playbackStarted = true
+            return
+        }
         val pos = player.currentPosition
         player.setMediaItem(MediaItem.fromUri(s.url))
         player.prepare()

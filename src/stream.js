@@ -3,7 +3,7 @@ const cheerio = require("cheerio");
 const fs = require("fs");
 const path = require("path");
 const { getKayiFamilyStream, toAbsoluteEpisode, extractBestbStream, extractStrmupStream, SERIES_NAME_MAP, SEASON_OFFSETS } = require("./kayifamily");
-const { getKayiFamilyTVStream } = require("./kayifamilytv");
+const { getKayiFamilyTVStream, SERIES_NAME_MAP: KFTV_MAP } = require("./kayifamilytv");
 const { canonicalSlug } = require("./catalog");
 const { extractKayihome, extractWakeupummah, extractVidara, buildProxyUrl } = require("./extractors/fireplayer");
 const { buildXsStreamUrl } = require("./extractors/xtremestream");
@@ -214,6 +214,35 @@ const STREAM_CACHE_MAX = 200;
 // wait for all 4.
 const STREAM_DEADLINE_MS = 20000;
 
+/**
+ * Last-resort source: KayiFamilyTV hosts some episodes as official full
+ * YouTube uploads (e.g. Dirilis Ertugrul season 1, which osmanonline.co.uk
+ * has no embeds for). The first youtube embed on the episode page is the
+ * episode itself (subsequent recurring embeds are site promos). The TV app
+ * opens these in the YouTube app.
+ */
+async function getYouTubeFallbackStream(siteSlug, abs) {
+    const slug = KFTV_MAP[siteSlug];
+    if (!slug) return null;
+    const pageUrl = `https://kayifamilytv.com/${slug}-episode-${abs}/`;
+    try {
+        const { data, status } = await axios.get(pageUrl, {
+            headers: { "User-Agent": UA },
+            timeout: 10000,
+            validateStatus: () => true
+        });
+        if (status !== 200) return null;
+        const m = (typeof data === "string" ? data : "").match(
+            /(?:src|data-litespeed-src)="https:\/\/www\.youtube\.com\/embed\/([A-Za-z0-9_-]{11})/
+        );
+        if (!m) return null;
+        log(`YouTube fallback for ${siteSlug} E${abs}: ${m[1]}`);
+        return { url: `https://www.youtube.com/watch?v=${m[1]}`, source: "youtube" };
+    } catch (err) {
+        return null;
+    }
+}
+
 async function getStream(type, id) {
     log(`getStream called for type=${type}, id=${id}`);
 
@@ -269,14 +298,37 @@ async function getStream(type, id) {
     streams.sort((a, b) => defs.findIndex(d => d.name === a.name) - defs.findIndex(d => d.name === b.name));
 
     if (streams.length === 0) {
+        // Last resort: official YouTube uploads via KayiFamilyTV (opens the
+        // YouTube app on Android TV). Covers e.g. Dirilis Ertugrul S1.
+        try {
+            const yt = await getYouTubeFallbackStream(siteSlug, abs);
+            if (yt) {
+                streams.push({
+                    name: "YouTube",
+                    title: "Official full episode on YouTube (opens YouTube app)",
+                    url: yt.url
+                });
+                log("Added YouTube fallback stream");
+            }
+        } catch (err) {
+            log(`YouTube fallback error: ${err.message}`);
+        }
+    }
+
+    if (streams.length === 0) {
         log("No streams found from any source");
         return { streams: [] };
     }
 
-    if (streamCache.size > STREAM_CACHE_MAX) {
-        streamCache.delete(streamCache.keys().next().value);
+    // Don't cache fallback-only results: a transient upstream blip would pin
+    // the YouTube fallback for the whole TTL even after sources recover.
+    const onlyFallback = streams.length === 1 && streams[0].name === "YouTube";
+    if (!onlyFallback) {
+        if (streamCache.size > STREAM_CACHE_MAX) {
+            streamCache.delete(streamCache.keys().next().value);
+        }
+        streamCache.set(id, { streams, ts: Date.now() });
     }
-    streamCache.set(id, { streams, ts: Date.now() });
 
     log(`Returning ${streams.length} stream(s)`);
     return { streams };
