@@ -16,6 +16,7 @@ const { getSeries, getMeta } = require("./catalog");
 const { getStream } = require("./stream");
 const xs = require("./extractors/xtremestream");
 const en = require("./english");
+const QRCode = require("qrcode");
 const urlModule = require("url");
 
 const app = express();
@@ -203,6 +204,116 @@ app.get(["/apk", "/app.apk"], (req, res) => {
     res.setHeader("Content-Type", "application/vnd.android.package-archive");
     res.setHeader("Content-Disposition", 'attachment; filename="turkishtv.apk"');
     res.sendFile(APK_PATH);
+});
+
+// ---------------------------------------------------------------------------
+// Phone pairing: TV shows a short code + QR; the user opens /pair/<code> on
+// their phone, pastes their TorBox API key there (real keyboard), and the TV
+// polls until it arrives. No long typing on the TV remote. Keys are held in
+// memory only long enough to hand them to the TV, then discarded.
+// ---------------------------------------------------------------------------
+const pairCodes = new Map(); // code -> { key, ts, delivered }
+const PAIR_TTL = 15 * 60 * 1000;
+
+function newPairCode() {
+    const alphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+    let code;
+    do {
+        code = Array.from({ length: 6 }, () => alphabet[Math.floor(Math.random() * alphabet.length)]).join("");
+        code = code.slice(0, 3) + "-" + code.slice(3);
+    } while (pairCodes.has(code));
+    pairCodes.set(code, { key: null, ts: Date.now(), delivered: false });
+    // opportunistic cleanup
+    for (const [c, v] of pairCodes) {
+        if (Date.now() - v.ts > PAIR_TTL) pairCodes.delete(c);
+    }
+    return code;
+}
+
+async function torboxKeyValid(key) {
+    try {
+        const resp = await axios.get("https://api.torbox.app/v1/api/torrents/mylist?limit=1", {
+            headers: { Authorization: `Bearer ${key}` },
+            timeout: 12000,
+            validateStatus: () => true
+        });
+        return resp.status === 200 && resp.data && resp.data.success === true;
+    } catch (e) {
+        return false;
+    }
+}
+
+app.post("/pair/start", (req, res) => res.json({ code: newPairCode() }));
+
+app.get("/pair/qr/:code", async (req, res) => {
+    const host = process.env.RENDER_EXTERNAL_URL || `http://127.0.0.1:${PORT}`;
+    try {
+        const png = await QRCode.toBuffer(`${host}/pair/${req.params.code}`, { width: 420, margin: 2 });
+        res.setHeader("Content-Type", "image/png");
+        res.setHeader("Cache-Control", "no-store");
+        res.send(png);
+    } catch (e) {
+        res.status(500).send("qr failed");
+    }
+});
+
+app.get("/pair/:code/check", (req, res) => {
+    const entry = pairCodes.get(req.params.code);
+    if (!entry || Date.now() - entry.ts > PAIR_TTL) {
+        return res.json({ status: "expired" });
+    }
+    if (entry.key) {
+        entry.delivered = true;
+        const key = entry.key;
+        setTimeout(() => pairCodes.delete(req.params.code), 60000);
+        return res.json({ status: "ready", key });
+    }
+    res.json({ status: "waiting" });
+});
+
+// Phone page: paste the TorBox key (mobile friendly)
+app.get("/pair/:code", (req, res) => {
+    const code = req.params.code;
+    const entry = pairCodes.get(code);
+    if (!entry || Date.now() - entry.ts > PAIR_TTL) {
+        return res.send("<html><body style='font-family:sans-serif;background:#141419;color:#f2f2f2;text-align:center;padding-top:15vh'><h2>Code expired</h2><p>Generate a new code on the TV (Settings → Pair from phone).</p></body></html>");
+    }
+    if (entry.key) {
+        return res.send("<html><body style='font-family:sans-serif;background:#141419;color:#f2f2f2;text-align:center;padding-top:15vh'><h2>✓ Paired</h2><p>The TV has your key. You can close this page.</p></body></html>");
+    }
+    res.send(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Wahab TV pairing</title></head>
+<body style="font-family:sans-serif;background:#141419;color:#f2f2f2;max-width:480px;margin:0 auto;padding:28px">
+<h2 style="color:#e0b34d;margin-bottom:4px">Wahab TV</h2>
+<p style="color:#9a9aa2;margin-top:0">Pairing code <b style="color:#f2f2f2;font-size:20px;letter-spacing:2px">${code}</b></p>
+<p>Paste your <b>TorBox API key</b> below — it is verified with TorBox before pairing.</p>
+<a href="https://torbox.app/settings" target="_blank" style="display:block;text-align:center;padding:12px;border:1px solid #3a3a44;border-radius:8px;color:#e0b34d;text-decoration:none">Open TorBox → Settings → API Key → Copy&nbsp;▸</a>
+<form method="POST" action="/pair/${code}">
+<input name="key" autocapitalize="off" autocomplete="off" spellcheck="false" placeholder="Paste the API key here"
+ style="width:100%;box-sizing:border-box;padding:14px;font-size:16px;border-radius:8px;border:1px solid #333;margin-top:12px;background:#1c1c24;color:#fff">
+<button style="width:100%;padding:14px;margin-top:12px;border:0;border-radius:8px;background:#e0b34d;color:#141419;font-size:16px;font-weight:bold">Pair this TV</button>
+</form>
+<p id="msg" style="min-height:22px;color:#e0b34d"></p>
+</body></html>`);
+});
+
+app.post("/pair/:code", async (req, res) => {
+    const entry = pairCodes.get(req.params.code);
+    const key = (req.body && req.body.key || "").trim();
+    const fail = (msg) => res.send(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="font-family:sans-serif;background:#141419;color:#f2f2f2;max-width:480px;margin:0 auto;padding:28px">
+<h2 style="color:#e0b34d">${msg}</h2><p><a style="color:#e0b34d" href="/pair/${req.params.code}">← try again</a></p></body></html>`);
+
+    if (!entry || Date.now() - entry.ts > PAIR_TTL) return fail("Code expired");
+    if (entry.key) return fail("Already paired");
+    if (key.length < 20) return fail("That doesn't look like an API key");
+
+    const valid = await torboxKeyValid(key);
+    if (!valid) return fail("TorBox rejected that key - check it and try again");
+
+    entry.key = key;
+    res.send(`<html><head><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="font-family:sans-serif;background:#141419;color:#f2f2f2;text-align:center;padding-top:15vh">
+<h2 style="color:#e0b34d">✓ Key verified</h2><p>Check the TV - it should confirm in a few seconds.</p></body></html>`);
 });
 
 // ---------------------------------------------------------------------------

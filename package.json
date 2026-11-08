@@ -19,7 +19,8 @@
     "express": "^5.2.1",
     "puppeteer-extra": "^3.3.6",
     "puppeteer-extra-plugin-stealth": "^2.11.2",
-    "stremio-addon-sdk": "^1.6.10"
+    "stremio-addon-sdk": "^1.6.10",
+    "qrcode": "^1.5.4"
   },
   "optionalDependencies": {
     "playwright-extra": "^1.0.0",

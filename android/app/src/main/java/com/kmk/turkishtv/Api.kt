@@ -159,6 +159,26 @@ object Api {
         }.take(12)
     }
 
+    // ---------- phone pairing ----------
+    // Returns "code" on success (throws on failure)
+    fun pairStart(): String {
+        val req = okhttp3.Request.Builder()
+            .url(Config.BASE_URL + "/pair/start")
+            .method("POST", okhttp3.RequestBody.create(null, ByteArray(0)))
+            .build()
+        http.newCall(req).execute().use { resp ->
+            val body = resp.body?.string() ?: "{}"
+            return JSONObject(body).getString("code")
+        }
+    }
+
+    /** status: waiting | ready (with key) | expired */
+    fun pairCheck(code: String): Pair<String, String?> {
+        val body = rawGet(Config.BASE_URL + "/pair/" + encode(code) + "/check")
+        val j = JSONObject(body)
+        return Pair(j.optString("status"), if (j.has("key")) j.optString("key") else null)
+    }
+
     private fun rawGet(url: String): String {
         http.newCall(okhttp3.Request.Builder().url(url).build()).execute().use { resp ->
             return resp.body?.string() ?: "[]"

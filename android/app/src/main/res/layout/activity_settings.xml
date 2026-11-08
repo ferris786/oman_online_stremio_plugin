@@ -63,6 +63,58 @@
             android:textColor="@color/accent" />
     </LinearLayout>
 
+    <Button
+        android:id="@+id/pairBtn"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:background="@drawable/row_selector"
+        android:paddingStart="20dp"
+        android:paddingEnd="20dp"
+        android:text="📱  Pair from your phone  (easiest)"
+        android:textColor="@color/accent" />
+
+    <LinearLayout
+        android:id="@+id/pairPanel"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:background="@drawable/card_bg"
+        android:orientation="horizontal"
+        android:padding="20dp"
+        android:visibility="gone">
+
+        <ImageView
+            android:id="@+id/pairQr"
+            android:layout_width="180dp"
+            android:layout_height="180dp"
+            android:contentDescription="@string/app_name" />
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="20dp"
+            android:orientation="vertical"
+            android:gravity="center_vertical">
+
+            <TextView
+                android:id="@+id/pairCodeText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/accent"
+                android:textSize="22sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/pairUrlText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:textColor="@color/text_dim"
+                android:textSize="13sp" />
+        </LinearLayout>
+    </LinearLayout>
+
     <TextView
         android:id="@+id/torboxStatus"
         android:layout_width="wrap_content"
