@@ -14,6 +14,7 @@ import coil.Coil
 import coil.request.ImageRequest
 import com.kmk.turkishtv.mux.MuxConfig
 import com.kmk.turkishtv.mux.MuxEngine
+import com.kmk.turkishtv.mux.QualityProfile
 import org.json.JSONObject
 
 /**
@@ -53,6 +54,21 @@ class MovieDetailActivity : Activity() {
                     m.optString("background").takeIf { it.isNotEmpty() }?.let {
                         load(it, findViewById(R.id.mBackdrop))
                     }
+                }
+
+                // AIOStreams preloadStreams trick: while the user reads the
+                // synopsis, send the best candidate to TorBox so it's cached
+                // (or nearly) by the time PLAY is pressed. Adds ONE torrent
+                // per browsed movie when nothing is cached.
+                val key = Torbox.apiKey(this)
+                if (key != null && MuxConfig.load(this).prewarm) {
+                    try {
+                        val title = m.optString("name", movie?.name ?: "")
+                        val year = m.optString("year", movie?.year ?: "")
+                        val result = MuxEngine.fetch(imdbId, title, year, key, MuxConfig.load(this))
+                        val best = result.streams.firstOrNull { !it.cached }
+                        if (best != null) Torbox.startDownload(key, best.hash, best.name)
+                    } catch (e: Exception) { /* silent - prewarm is best-effort */ }
                 }
             } catch (e: Exception) { /* detail text stays empty */ }
         }.start()

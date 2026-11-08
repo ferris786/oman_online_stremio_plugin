@@ -246,31 +246,43 @@ class PlayerActivity : Activity() {
             runOnUiThread { dialog.show() }
 
             val start = System.currentTimeMillis()
+            var earlyAttempts = 0
             while (!cancelled && System.currentTimeMillis() - start < 30 * 60 * 1000) {
                 val p = Torbox.downloadProgress(key, torrentId)
-                if (p.ready) {
-                    runOnUiThread { dialog.dismiss() }
+                // After the first ~10s, try resolving early every ~12s even
+                // before completion - TorBox often serves the file while it
+                // finishes, which makes well-seeded sources feel instant.
+                val tryEarly = !p.ready &&
+                    System.currentTimeMillis() - start > 10000 && earlyAttempts < 5
+                if (p.ready || tryEarly) {
+                    if (tryEarly) earlyAttempts++
                     val link = Torbox.resolveStream(key, s.hash, s.dn.ifEmpty { s.name })
-                    runOnUiThread {
-                        if (link.startsWith("http")) {
+                    if (link.startsWith("http")) {
+                        runOnUiThread {
+                            dialog.dismiss()
                             playbackStarted = false
                             player.setMediaItem(MediaItem.fromUri(link))
                             player.prepare()
                             player.playWhenReady = true
-                        } else {
+                        }
+                        return@Thread
+                    }
+                    if (p.ready) {
+                        runOnUiThread {
+                            dialog.dismiss()
                             Toast.makeText(this, link, Toast.LENGTH_LONG).show()
                         }
+                        return@Thread
                     }
-                    return@Thread
                 }
                 runOnUiThread {
                     if (dialog.isShowing) {
                         dialog.setMessage(
                             "${p.percent}%  ·  ${String.format("%.1f", p.speedMbps)} MB/s\n" +
-                            "status: ${p.status}\n\nThe download continues in your TorBox account even if you cancel.")
+                            "status: ${p.status}\n\nWell-seeded sources usually start within a minute.")
                     }
                 }
-                Thread.sleep(3000)
+                Thread.sleep(2000)
             }
             runOnUiThread { dialog.dismiss() }
         }.start()

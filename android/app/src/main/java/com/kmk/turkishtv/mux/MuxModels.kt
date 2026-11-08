@@ -54,6 +54,7 @@ data class MuxConfig(
     val profile: QualityProfile = QualityProfile.BALANCED,
     val showUncached: Boolean = true,
     val hide4k: Boolean = false,
+    val prewarm: Boolean = true,
     val minSeeders: Int = 3,
     val maxResults: Int = 30
 ) {
@@ -88,7 +89,8 @@ data class MuxConfig(
                     QualityProfile.valueOf(p.getString("mux_profile", "BALANCED") ?: "BALANCED")
                 } catch (e: Exception) { QualityProfile.BALANCED },
                 showUncached = p.getBoolean("mux_show_uncached", true),
-                hide4k = p.getBoolean("mux_hide_4k", false)
+                hide4k = p.getBoolean("mux_hide_4k", false),
+                prewarm = p.getBoolean("mux_prewarm", true)
             )
         }
 
@@ -97,6 +99,7 @@ data class MuxConfig(
                 .putString("mux_profile", cfg.profile.name)
                 .putBoolean("mux_show_uncached", cfg.showUncached)
                 .putBoolean("mux_hide_4k", cfg.hide4k)
+                .putBoolean("mux_prewarm", cfg.prewarm)
                 .apply()
         }
     }

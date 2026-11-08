@@ -123,6 +123,15 @@
         android:textSize="14sp" />
 
     <CheckBox
+        android:id="@+id/prewarm"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:text="Pre-download while browsing (AIOStreams-style)"
+        android:textColor="@color/text"
+        android:textSize="14sp" />
+
+    <CheckBox
         android:id="@+id/hide4k"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"

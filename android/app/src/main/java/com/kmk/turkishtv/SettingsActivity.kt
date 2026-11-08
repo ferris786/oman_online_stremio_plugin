@@ -93,6 +93,7 @@ class SettingsActivity : Activity() {
         val dataBtn = findViewById<Button>(R.id.profileDataSaver)
         val uncachedCb = findViewById<CheckBox>(R.id.showUncached)
         val hide4kCb = findViewById<CheckBox>(R.id.hide4k)
+        val prewarmCb = findViewById<CheckBox>(R.id.prewarm)
 
         var cfg = MuxConfig.load(this)
         fun paintProfiles() {
@@ -108,6 +109,7 @@ class SettingsActivity : Activity() {
         paintProfiles()
         uncachedCb.isChecked = cfg.showUncached
         hide4kCb.isChecked = cfg.hide4k
+        prewarmCb.isChecked = cfg.prewarm
 
         fun persist() = MuxConfig.save(this, cfg)
         balBtn.setOnClickListener { cfg = cfg.copy(profile = QualityProfile.BALANCED); paintProfiles(); persist() }
@@ -115,6 +117,7 @@ class SettingsActivity : Activity() {
         dataBtn.setOnClickListener { cfg = cfg.copy(profile = QualityProfile.DATA_SAVER); paintProfiles(); persist() }
         uncachedCb.setOnCheckedChangeListener { _, v -> cfg = cfg.copy(showUncached = v); persist() }
         hide4kCb.setOnCheckedChangeListener { _, v -> cfg = cfg.copy(hide4k = v); persist() }
+        prewarmCb.setOnCheckedChangeListener { _, v -> cfg = cfg.copy(prewarm = v); persist() }
 
         // version footer (from the actual installed package)
         try {
