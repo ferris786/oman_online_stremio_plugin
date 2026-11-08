@@ -71,9 +71,9 @@ object Api {
     data class Torrent(val name: String, val hash: String, val seeders: Int, val sizeBytes: Long, val quality: String)
 
     fun enCatalog(catalog: String, skip: Int = 0): List<EnMovie> {
-        val url = Config.BASE_URL + "/en/catalog/movie/" + catalog +
-            (if (skip > 0) "/$skip" else "")
-        val metas = JSONObject(get(url)).getJSONArray("metas")
+        // get() prepends BASE_URL itself - pass only the path
+        val path = "/en/catalog/movie/" + catalog + (if (skip > 0) "/$skip" else "")
+        val metas = JSONObject(get(path)).getJSONArray("metas")
         val out = ArrayList<EnMovie>(metas.length())
         for (i in 0 until metas.length()) {
             val m = metas.getJSONObject(i)
