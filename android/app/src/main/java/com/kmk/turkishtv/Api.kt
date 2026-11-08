@@ -111,6 +111,60 @@ object Api {
         return out
     }
 
+    /**
+     * Direct TPB (apibay) search from the DEVICE - fallback for when the
+     * addon's server IP gets nothing back (some indexers block datacenter
+     * IPs). Residential connections (the TV itself) are usually fine.
+     */
+    fun apibaySearch(title: String, year: String): List<Torrent> {
+        val clean = title.replace(Regex("[^\\w\\s]"), " ").replace(Regex("\\s+"), " ").trim()
+        val urls = listOf(
+            "https://apibay.org/q.php?q=" + encode("$clean $year") + "&cat=207",
+            "https://apibay.org/q.php?q=" + encode(clean) + "&cat=202"
+        )
+        val out = ArrayList<Torrent>()
+        for (u in urls) {
+            try {
+                val body = rawGet(u)
+                val arr = org.json.JSONArray(body)
+                for (i in 0 until arr.length()) {
+                    val r = arr.getJSONObject(i)
+                    val name = r.optString("name")
+                    if (name == "No results returned") continue
+                    val hash = r.optString("info_hash")
+                    val seeders = r.optInt("seeders", 0)
+                    val size = r.optLong("size", 0)
+                    if (hash.length < 20 || seeders < 3 || size < 400000000L || size > 40000000000L) continue
+                    val lname = name.lowercase()
+                    if (Regex("\\b(cam|ts|screener|hdcam|hc)\\b").containsMatchIn(lname)) continue
+                    if (year.isNotEmpty() && !lname.contains(year)) {
+                        val years = Regex("(19|20)\\d{2}").findAll(lname).map { it.value }.toList()
+                        if (years.isNotEmpty() && !years.contains(year)) continue
+                    }
+                    val res = Regex("(2160|1080|720|480)p").find(lname)?.value ?: "SD"
+                    val kind = when {
+                        lname.contains("remux") -> "Remux"
+                        lname.contains("blu") -> "BluRay"
+                        lname.contains("web") -> "WEB-DL"
+                        else -> "WEB"
+                    }
+                    out.add(Torrent(name, hash, seeders, size, "$res $kind"))
+                }
+            } catch (e: Exception) { /* indexer unreachable */ }
+        }
+        // dedupe by hash, best (seeders + sane size) first
+        return out.distinctBy { it.hash }.sortedByDescending {
+            minOf(it.seeders, 200) + (if (it.sizeBytes >= 1500000000L && it.sizeBytes <= 9000000000L) 150 else 0) +
+                (if (it.quality.startsWith("1080p")) 120 else if (it.quality.startsWith("720p")) 60 else 0)
+        }.take(12)
+    }
+
+    private fun rawGet(url: String): String {
+        http.newCall(okhttp3.Request.Builder().url(url).build()).execute().use { resp ->
+            return resp.body?.string() ?: "[]"
+        }
+    }
+
     private fun encode(s: String): String {
         return java.net.URLEncoder.encode(s, "UTF-8").replace("+", "%20")
     }

@@ -91,7 +91,14 @@ class MovieDetailActivity : Activity() {
 
         Thread {
             try {
-                val candidates = Api.enTorrents(imdbId)
+                var candidates = Api.enTorrents(imdbId)
+                if (candidates.isEmpty()) {
+                    // addon's server IP may be blocked by the indexer - the
+                    // TV's own connection usually is not
+                    val title = meta?.optString("name") ?: movie?.name ?: ""
+                    val year = meta?.optString("year") ?: (movie?.year ?: "")
+                    if (title.isNotEmpty()) candidates = Api.apibaySearch(title, year)
+                }
                 if (candidates.isEmpty()) throw Exception("no torrents found for this movie")
 
                 val cached = Torbox.cachedHashes(key, candidates.map { it.hash })
