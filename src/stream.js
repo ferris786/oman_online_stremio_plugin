@@ -285,10 +285,12 @@ async function getStream(type, id) {
     // list arrives in the time of the slowest source THAT FITS the deadline,
     // and anything still pending is simply skipped this round (the cache and
     // the player's own retry will pick it up later).
+    // Speed-first order (tested segment latencies): direct-CDN sources lead,
+    // the Render-proxied 1080p source goes last despite its quality.
     const defs = [
-        { name: "OsmanOnline", title: `Source 1: OsmanOnline (E${abs})`, fn: () => getOsmanOnlineStream(siteSlug, abs) },
-        { name: "KayiFamily", title: `Source 2: KayiFamily (E${abs})`, fn: () => getKayiFamilyStream(siteSlug, abs) },
-        { name: "KayiFamilyTV", title: `Source 3: KayiFamilyTV (E${abs})`, fn: () => getKayiFamilyTVStream(siteSlug, abs) },
+        { name: "KayiFamilyTV", title: `Source 1: KayiFamilyTV (fastest · E${abs})`, fn: () => getKayiFamilyTVStream(siteSlug, abs) },
+        { name: "OsmanOnline", title: `Source 2: OsmanOnline (E${abs})`, fn: () => getOsmanOnlineStream(siteSlug, abs) },
+        { name: "KayiFamily", title: `Source 3: KayiFamily (E${abs})`, fn: () => getKayiFamilyStream(siteSlug, abs) },
         { name: "OsmanOnlineLive", title: "Source 4: OsmanOnline.live 1080p (via addon proxy)", fn: () => getOsmanOnlineLiveStream(siteSlug, abs) }
     ];
 

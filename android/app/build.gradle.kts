@@ -11,8 +11,8 @@ android {
         applicationId = "com.kmk.turkishtv"
         minSdk = 21
         targetSdk = 34
-        versionCode = 21
-        versionName = "3.4"
+        versionCode = 22
+        versionName = "3.5"
     }
 
     buildTypes {

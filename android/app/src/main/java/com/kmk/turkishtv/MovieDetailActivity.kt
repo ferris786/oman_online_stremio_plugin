@@ -105,15 +105,6 @@ class MovieDetailActivity : Activity() {
                     }
                     return@Thread
                 }
-                if (result.cachedCount == 0) {
-                    runOnUiThread {
-                        dlg.dismiss()
-                        Toast.makeText(this,
-                            "Nothing cached yet - ${result.uncachedCount} downloadable (⏳) sources listed",
-                            Toast.LENGTH_LONG).show()
-                    }
-                }
-
                 val arr = org.json.JSONArray()
                 for (t in result.streams) {
                     arr.put(JSONObject()
@@ -124,6 +115,32 @@ class MovieDetailActivity : Activity() {
                         .put("dn", t.name)
                         .put("cached", t.cached))
                 }
+                // TorBox's cache is thinner than Real-Debrid's: when NOTHING is
+                // instant, offering a one-tap download of the best source beats
+                // a wall of identical rows.
+                if (result.cachedCount == 0 && result.uncachedCount > 0) {
+                    val best1080 = result.streams.indexOfFirst { it.attrs.resolution == 1080 }
+                    val best4k = result.streams.indexOfFirst { it.attrs.resolution == 2160 }
+                    runOnUiThread {
+                        dlg.dismiss()
+                        android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog)
+                            .setTitle("Nothing instant on TorBox yet")
+                            .setMessage("Nothing cached for this movie. Download the best source now?\n" +
+                                "(download plays automatically when ready)")
+                            .setPositiveButton("Best 4K") { _, _ ->
+                                launchPlayer(arr, if (best4k >= 0) best4k else 0, imdbId)
+                            }
+                            .setNeutralButton("Best 1080p") { _, _ ->
+                                launchPlayer(arr, if (best1080 >= 0) best1080 else 0, imdbId)
+                            }
+                            .setNegativeButton("Browse all") { _, _ ->
+                                launchPicker(arr, imdbId, result)
+                            }
+                            .show()
+                    }
+                    return@Thread
+                }
+
                 runOnUiThread {
                     dlg.dismiss()
                     startActivity(Intent(this, SourcePickerActivity::class.java).apply {
@@ -141,5 +158,24 @@ class MovieDetailActivity : Activity() {
                 }
             }
         }.start()
+    }
+
+    private fun launchPicker(arr: org.json.JSONArray, imdbId: String, result: MuxEngine.Result) {
+        startActivity(Intent(this, SourcePickerActivity::class.java).apply {
+            putExtra("movieTitle", movie?.name)
+            putExtra("videoId", "movie:$imdbId")
+            putExtra("videoTitle", movie?.name)
+            putExtra("streamsJson", arr.toString())
+            putStringArrayListExtra("providers", ArrayList(result.providers))
+        })
+    }
+
+    private fun launchPlayer(arr: org.json.JSONArray, startIndex: Int, imdbId: String) {
+        startActivity(Intent(this, PlayerActivity::class.java).apply {
+            putExtra("videoId", "movie:$imdbId")
+            putExtra("videoTitle", movie?.name)
+            putExtra("streamsJson", arr.toString())
+            putExtra("startIndex", startIndex)
+        })
     }
 }
