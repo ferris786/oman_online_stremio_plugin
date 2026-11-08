@@ -215,6 +215,27 @@ const STREAM_CACHE_MAX = 200;
 const STREAM_DEADLINE_MS = 20000;
 
 /**
+ * Validate that a stream's master playlist actually responds with HLS.
+ * Kills "source shows in the app but fails to play" experiences: dead
+ * videos (vidara per-file failures, kayihome scheme changes, expired
+ * mirrors) are dropped before the player ever sees them.
+ */
+async function streamIsPlayable(url) {
+    try {
+        const { data, status } = await axios.get(url, {
+            headers: { "User-Agent": UA },
+            timeout: 7000,
+            responseType: "text",
+            transformResponse: x => x,
+            validateStatus: () => true
+        });
+        return status === 200 && typeof data === "string" && data.startsWith("#EXTM3U");
+    } catch (e) {
+        return false;
+    }
+}
+
+/**
  * Last-resort source: KayiFamilyTV hosts some episodes as official full
  * YouTube uploads (e.g. Dirilis Ertugrul season 1, which osmanonline.co.uk
  * has no embeds for). The first youtube embed on the episode page is the
@@ -296,6 +317,24 @@ async function getStream(type, id) {
 
     // Preserve canonical source order regardless of completion order
     streams.sort((a, b) => defs.findIndex(d => d.name === a.name) - defs.findIndex(d => d.name === b.name));
+
+    // Verify every stream actually serves HLS before offering it. A dead
+    // source in the list is worse than a shorter list: players latch onto
+    // it and fail. (Playlists are small; this is 1-2s per source and the
+    // surviving list is cached.)
+    if (streams.length > 0) {
+        const checks = await Promise.all(streams.map(st => streamIsPlayable(st.url)));
+        const before = streams.length;
+        for (let i = streams.length - 1; i >= 0; i--) {
+            if (!checks[i]) {
+                log(`Dropping unplayable source: ${streams[i].name}`);
+                streams.splice(i, 1);
+            }
+        }
+        if (streams.length < before) {
+            log(`Validation: ${before} -> ${streams.length} playable source(s)`);
+        }
+    }
 
     if (streams.length === 0) {
         // Last resort: official YouTube uploads via KayiFamilyTV (opens the
