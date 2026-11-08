@@ -23,7 +23,9 @@ class PlayerActivity : Activity() {
     private lateinit var sourceLabel: TextView
     private lateinit var sourceChipRow: LinearLayout
 
-    private var streams: List<Api.Stream> = emptyList()
+    data class PStream(val name: String, val title: String, val url: String,
+                        val hash: String = "", val dn: String = "")
+    private var streams: List<PStream> = emptyList()
     private var streamIndex = 0
     private var videoId: String = ""
 
@@ -48,10 +50,11 @@ class PlayerActivity : Activity() {
         val preResolved = intent.getStringExtra("streamsJson")
         if (preResolved != null) {
             val arr = org.json.JSONArray(preResolved)
-            val list = ArrayList<Api.Stream>(arr.length())
+            val list = ArrayList<PStream>(arr.length())
             for (i in 0 until arr.length()) {
                 val o = arr.getJSONObject(i)
-                list.add(Api.Stream(o.optString("name"), o.optString("title"), o.optString("url")))
+                list.add(PStream(o.optString("name"), o.optString("title"),
+                    o.optString("url"), o.optString("hash", ""), o.optString("dn", "")))
             }
             streams = list
             streamIndex = 0
@@ -62,7 +65,8 @@ class PlayerActivity : Activity() {
 
         Thread {
             try {
-                val s = Api.streams(videoId)
+                val apiStreams = Api.streams(videoId)
+                val s = apiStreams.map { PStream(it.name, it.title, it.url) }
                 runOnUiThread {
                     if (s.isEmpty()) {
                         Toast.makeText(this, "No streams available for this episode", Toast.LENGTH_LONG).show()
@@ -152,6 +156,10 @@ class PlayerActivity : Activity() {
             playbackStarted = true // don't let auto-fallback fire the intent
             return
         }
+        if (s.url.isEmpty() && s.hash.isNotEmpty()) {
+            resolveLazy(s, -1L)
+            return
+        }
         player.setMediaItem(MediaItem.fromUri(s.url))
         player.prepare()
         val pos = if (resumeMs >= 0) resumeMs else WatchState.getPosition(this, videoId)
@@ -174,6 +182,35 @@ class PlayerActivity : Activity() {
         playCurrent()
     }
 
+    /**
+     * Comet-style lazy resolve: turn a cached torrent hash into a direct
+     * TorBox link only when the user actually picks it.
+     */
+    private fun resolveLazy(s: PStream, seekTo: Long) {
+        val key = Torbox.apiKey(this)
+        if (key == null) {
+            Toast.makeText(this, "Add your TorBox key in Settings first", Toast.LENGTH_LONG).show()
+            return
+        }
+        Toast.makeText(this, "Resolving ${s.name}…", Toast.LENGTH_SHORT).show()
+        Thread {
+            val result = Torbox.resolveStream(key, s.hash, s.dn.ifEmpty { s.name })
+            runOnUiThread {
+                if (result.startsWith("http")) {
+                    val pos = if (seekTo >= 0) seekTo else -1L
+                    playbackStarted = false
+                    player.setMediaItem(MediaItem.fromUri(result))
+                    player.prepare()
+                    if (pos > Config.RESUME_THRESHOLD_MS) player.seekTo(pos)
+                    player.playWhenReady = true
+                } else {
+                    Toast.makeText(this, result, Toast.LENGTH_LONG).show()
+                    tryNextSource(result)
+                }
+            }
+        }.start()
+    }
+
     private fun cycleSource(delta: Int) {
         if (streams.isEmpty()) return
         switchToSource((streamIndex + delta + streams.size) % streams.size)
@@ -189,6 +226,10 @@ class PlayerActivity : Activity() {
         if (isYouTube(s.url)) {
             launchYouTube(s.url)
             playbackStarted = true
+            return
+        }
+        if (s.url.isEmpty() && s.hash.isNotEmpty()) {
+            resolveLazy(s, player.currentPosition)
             return
         }
         val pos = player.currentPosition

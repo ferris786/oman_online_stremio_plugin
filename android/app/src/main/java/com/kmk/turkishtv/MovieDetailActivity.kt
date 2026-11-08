@@ -24,9 +24,6 @@ class MovieDetailActivity : Activity() {
     private var movie: Api.EnMovie? = null
     private var meta: JSONObject? = null
 
-    // streams built for the player: name/title/url like Api.Stream
-    private data class PlayStream(val name: String, val title: String, val url: String)
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_movie)
@@ -94,14 +91,28 @@ class MovieDetailActivity : Activity() {
                 val title = meta?.optString("name") ?: movie?.name ?: ""
                 val year = meta?.optString("year") ?: (movie?.year ?: "")
 
-                // Device-direct indexes first (not datacenter-blocked): YTS by
-                // exact IMDb match + TPB by title. Addon's merged list adds more.
-                var candidates = Api.ytsByImdb(imdbId)
-                if (title.isNotEmpty()) candidates = candidates + Api.apibaySearch(title, year)
-                candidates = candidates.distinctBy { it.hash }
-                if (candidates.isEmpty()) candidates = Api.enTorrents(imdbId)
+                // Parallel discovery: YTS (exact IMDb), TPB from the device,
+                // and the addon's merged list - all at once. Lazy model: we
+                // list sources after ONE batched cached-check and only
+                // resolve the link for the source actually chosen (Comet-style).
+                var yts: List<Api.Torrent> = emptyList()
+                var tpb: List<Api.Torrent> = emptyList()
+                var addon: List<Api.Torrent> = emptyList()
+                val t1 = Thread { yts = Api.ytsByImdb(imdbId) }
+                val t2 = Thread { if (title.isNotEmpty()) tpb = Api.apibaySearch(title, year) }
+                val t3 = Thread { addon = try { Api.enTorrents(imdbId) } catch (e: Exception) { emptyList() } }
+                t1.start(); t2.start(); t3.start(); t1.join(); t2.join(); t3.join()
+
+                val candidates = (yts + tpb + addon)
+                    .distinctBy { it.hash }
+                    .sortedByDescending { t ->
+                        minOf(t.seeders, 200) +
+                        (if (t.quality.startsWith("1080p")) 120 else if (t.quality.startsWith("720p")) 60 else 0) +
+                        (if (t.sizeBytes in 1500000000L..9000000000L) 150 else 0)
+                    }
                 if (candidates.isEmpty()) throw Exception("no torrent sources found for this movie")
 
+                // one batched availability check -> instant chip list
                 val cached = Torbox.cachedHashes(key, candidates.map { it.hash })
                 val playable = candidates.filter { cached.contains(it.hash.lowercase()) }
                 if (playable.isEmpty()) {
@@ -114,29 +125,17 @@ class MovieDetailActivity : Activity() {
                     return@Thread
                 }
 
-                // resolve the best (up to 6) to direct links; failures now
-                // carry the real TorBox reason
-                val streams = ArrayList<PlayStream>()
-                var lastError: String? = null
-                for (t in playable.take(6)) {
-                    val result = Torbox.resolveStream(key, t.hash, t.name)
-                    if (result.startsWith("http")) {
-                        val gb = t.sizeBytes / 1e9
-                        streams.add(PlayStream(
-                            name = "${t.quality}",
-                            title = "${t.quality} · ${String.format("%.1f", gb)}GB · ${t.seeders} seeds",
-                            url = result))
-                    } else {
-                        lastError = result
-                    }
-                }
-                if (streams.isEmpty()) throw Exception(lastError ?: "could not resolve any link")
-
                 runOnUiThread {
                     dlg.dismiss()
                     val arr = org.json.JSONArray()
-                    streams.forEach {
-                        arr.put(JSONObject().put("name", it.name).put("title", it.title).put("url", it.url))
+                    for (t in playable.take(8)) {
+                        val gb = t.sizeBytes / 1e9
+                        arr.put(JSONObject()
+                            .put("name", t.quality)
+                            .put("title", "${t.quality} · ${String.format("%.1f", gb)}GB · ${t.seeders} seeds")
+                            .put("url", "")
+                            .put("hash", t.hash)
+                            .put("dn", t.name))
                     }
                     startActivity(Intent(this, PlayerActivity::class.java).apply {
                         putExtra("videoId", "movie:$imdbId")
