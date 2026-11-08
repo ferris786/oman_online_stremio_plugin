@@ -56,21 +56,44 @@ object Torbox {
     /**
      * Which of the given info-hashes are already cached (instant) on TorBox?
      * Returns the set of cached hashes.
+     *
+     * The API takes hash as an ARRAY query param (FastAPI style): repeated
+     * ?hash= keys, NOT comma-joined. Response format=list gives a plain
+     * array of hashes; format=object gives objects - we parse both.
      */
     fun cachedHashes(key: String, hashes: List<String>): Set<String> {
         if (hashes.isEmpty()) return emptySet()
         return try {
-            val j = call("$BASE/torrents/checkcached?hash=${hashes.joinToString(",")}&list_items=false", key)
+            val sb = StringBuilder("$BASE/torrents/checkcached?format=list")
+            for (h in hashes) sb.append("&hash=").append(h.lowercase())
+            val j = call(sb.toString(), key)
+            if (!j.optBoolean("success")) return emptySet()
             val out = HashSet<String>()
-            val data = j.optJSONArray("data") ?: return emptySet()
-            for (i in 0 until data.length()) {
-                val h = data.optJSONObject(i)?.optString("hash") ?: continue
-                if (h.isNotBlank()) out.add(h.lowercase())
+            val data = j.opt("data") ?: return emptySet()
+            when (data) {
+                is org.json.JSONArray -> for (i in 0 until data.length()) {
+                    val el = data.opt(i) ?: continue
+                    when (el) {
+                        is String -> if (el.isNotBlank()) out.add(el.lowercase())
+                        is org.json.JSONObject -> {
+                            val h = el.optString("hash", "")
+                            if (h.isNotBlank()) out.add(h.lowercase())
+                        }
+                    }
+                }
+                is org.json.JSONObject -> for (k in el_keys(data)) out.add(k.lowercase())
             }
             out
         } catch (e: Exception) {
             emptySet()
         }
+    }
+
+    private fun el_keys(o: org.json.JSONObject): List<String> {
+        val out = ArrayList<String>()
+        val it = o.keys()
+        while (it.hasNext()) out.add(it.next())
+        return out
     }
 
     /**
@@ -82,10 +105,16 @@ object Torbox {
         val magnet = "magnet:?xt=urn:btih:$hash&dn=${java.net.URLEncoder.encode(name, "UTF-8")}" +
             "&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce"
 
-        // 1. create (or re-use) the torrent in the account
+        // 1. create (or re-use) the torrent in the account; the response may
+        // carry the torrent_id directly, which saves a mylist scan
+        var knownTorrentId = -1L
         try {
-            call("$BASE/torrents/createtorrent", key,
+            val create = call("$BASE/torrents/createtorrent", key,
                 FormBody.Builder().add("magnet", magnet).add("seed", "2").build())
+            val d = create.optJSONObject("data")
+            if (d != null) {
+                knownTorrentId = d.optLong("torrent_id", -1L)
+            }
         } catch (e: Exception) { /* may already exist */ }
 
         // 2. find it in the list (a couple of retries for propagation)
@@ -112,7 +141,7 @@ object Torbox {
                     }
                     if (bestId > 0) {
                         // 3. direct link
-                        val dl = call("$BASE/torrents/requestdl?torrent_id=${t.optLong("id")}&file_id=$bestId", key)
+                        val dl = call("$BASE/torrents/requestdl?torrent_id=${t.optLong("id", knownTorrentId)}&file_id=$bestId", key)
                         val link = dl.optString("data")
                         if (link.startsWith("http")) return link
                         return null
