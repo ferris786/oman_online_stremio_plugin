@@ -60,7 +60,8 @@ data class MuxConfig(
 ) {
     /** Resolution preference order for this profile (lexicographic sort key) */
     fun resolutionOrder(): List<Int> = when (profile) {
-        QualityProfile.BALANCED -> listOf(1080, 2160, 720, 480, 0)
+        // user preference: all the 4K up front, then lesser quality
+        QualityProfile.BALANCED -> listOf(2160, 1080, 720, 480, 0)
         QualityProfile.CINEMA -> listOf(2160, 1080, 720, 480, 0)
         QualityProfile.DATA_SAVER -> listOf(720, 1080, 480, 0, 2160)
     }

@@ -25,7 +25,7 @@ class PlayerActivity : Activity() {
 
     data class PStream(val name: String, val title: String, val url: String,
                         val hash: String = "", val dn: String = "",
-                        val cached: Boolean = true)
+                        val cached: Boolean = true, val encode: String = "")
     private var streams: List<PStream> = emptyList()
     private var streamIndex = 0
     private var videoId: String = ""
@@ -56,7 +56,7 @@ class PlayerActivity : Activity() {
                 val o = arr.getJSONObject(i)
                 list.add(PStream(o.optString("name"), o.optString("title"),
                     o.optString("url"), o.optString("hash", ""), o.optString("dn", ""),
-                    o.optBoolean("cached", true)))
+                    o.optBoolean("cached", true), o.optString("encode", "")))
             }
             streams = list
             val startIdx = intent.getIntExtra("startIndex", 0)
@@ -173,14 +173,26 @@ class PlayerActivity : Activity() {
         player.playWhenReady = true
     }
 
+    private val failedSources = mutableSetOf<Int>()
+
     private fun tryNextSource(reason: String) {
         Toast.makeText(this, "$reason - trying next source…", Toast.LENGTH_SHORT).show()
-        // skip YouTube entries during auto-fallback: opening another app
-        // should be a deliberate choice (chip or number key), not a surprise
-        while (streamIndex + 1 < streams.size && isYouTube(streams[streamIndex + 1].url)) {
-            streamIndex++
+        failedSources.add(streamIndex)
+
+        // Codec-aware fallback: prefer the next UNTRIED source with a
+        // different encode (HEVC/DV files often fail on some TVs while
+        // x264 plays everywhere); any untried beats a repeat; skip YouTube.
+        val failedEncode = streams[streamIndex].encode
+        val candidates = streams.indices.filter { it !in failedSources && !isYouTube(streams[it].url) }
+        val next = candidates.firstOrNull { streams[it].encode != failedEncode && streams[it].encode.isNotEmpty() }
+            ?: candidates.firstOrNull()
+
+        if (next == null) {
+            Toast.makeText(this, "All sources failed", Toast.LENGTH_LONG).show()
+            finish()
+            return
         }
-        streamIndex++
+        streamIndex = next
         updateSourcePill()
         playCurrent()
     }
@@ -208,6 +220,7 @@ class PlayerActivity : Activity() {
                     player.playWhenReady = true
                 } else {
                     Toast.makeText(this, result, Toast.LENGTH_LONG).show()
+                    failedSources.add(streamIndex)
                     tryNextSource(result)
                 }
             }
@@ -231,6 +244,8 @@ class PlayerActivity : Activity() {
             if (torrentId <= 0) {
                 runOnUiThread {
                     Toast.makeText(this, "Could not start download (plan limit reached?)", Toast.LENGTH_LONG).show()
+                    failedSources.add(streamIndex)
+                    tryNextSource("download start failed")
                 }
                 return@Thread
             }
@@ -387,15 +402,19 @@ class PlayerActivity : Activity() {
                     LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
                 ).apply { bottomMargin = m; leftMargin = m; rightMargin = m }
 
+                val failed = i in failedSources
                 val badge = TextView(this@PlayerActivity).apply {
                     text = when {
                         i == streamIndex -> "▶"
+                        failed -> "✗"
                         isYouTube(st.url) -> "▶"
                         st.cached -> "⚡"
                         else -> "⏳"
                     }
                     textSize = 20f
-                    setTextColor(resources.getColor(if (st.cached || i == streamIndex) R.color.accent else R.color.text_dim))
+                    setTextColor(resources.getColor(
+                        if (failed) android.graphics.Color.parseColor("#e05555")
+                        else if (st.cached || i == streamIndex) R.color.accent else R.color.text_dim))
                 }
                 addView(badge)
 

@@ -129,6 +129,7 @@ class MovieDetailActivity : Activity() {
                         .put("url", "")
                         .put("hash", t.hash)
                         .put("dn", t.name)
+                        .put("encode", t.attrs.encode)
                         .put("cached", t.cached))
                 }
                 // TorBox's cache is thinner than Real-Debrid's: when NOTHING is
