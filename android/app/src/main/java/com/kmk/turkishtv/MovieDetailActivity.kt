@@ -114,19 +114,20 @@ class MovieDetailActivity : Activity() {
                     }
                 }
 
+                val arr = org.json.JSONArray()
+                for (t in result.streams) {
+                    arr.put(JSONObject()
+                        .put("name", t.attrs.resolutionLabel)
+                        .put("title", t.formattedTitle())
+                        .put("url", "")
+                        .put("hash", t.hash)
+                        .put("dn", t.name)
+                        .put("cached", t.cached))
+                }
                 runOnUiThread {
                     dlg.dismiss()
-                    val arr = org.json.JSONArray()
-                    for (t in result.streams) {
-                        arr.put(JSONObject()
-                            .put("name", t.attrs.resolutionLabel)
-                            .put("title", t.formattedTitle())
-                            .put("url", "")
-                            .put("hash", t.hash)
-                            .put("dn", t.name)
-                            .put("cached", t.cached))
-                    }
-                    startActivity(Intent(this, PlayerActivity::class.java).apply {
+                    startActivity(Intent(this, SourcePickerActivity::class.java).apply {
+                        putExtra("movieTitle", movie?.name)
                         putExtra("videoId", "movie:$imdbId")
                         putExtra("videoTitle", movie?.name)
                         putExtra("streamsJson", arr.toString())

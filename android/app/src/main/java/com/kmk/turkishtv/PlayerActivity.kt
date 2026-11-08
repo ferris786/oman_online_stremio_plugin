@@ -59,7 +59,8 @@ class PlayerActivity : Activity() {
                     o.optBoolean("cached", true)))
             }
             streams = list
-            streamIndex = 0
+            val startIdx = intent.getIntExtra("startIndex", 0)
+            streamIndex = if (startIdx in list.indices) startIdx else 0
             buildSourceChips()
             playCurrent()
             return

@@ -116,6 +116,13 @@ class SettingsActivity : Activity() {
         uncachedCb.setOnCheckedChangeListener { _, v -> cfg = cfg.copy(showUncached = v); persist() }
         hide4kCb.setOnCheckedChangeListener { _, v -> cfg = cfg.copy(hide4k = v); persist() }
 
+        // version footer (from the actual installed package)
+        try {
+            val pi = packageManager.getPackageInfo(packageName, 0)
+            findViewById<TextView>(R.id.versionFooter).text =
+                "Wahab TV v${pi.versionName} (${if (android.os.Build.VERSION.SDK_INT >= 28) pi.longVersionCode else pi.versionCode.toLong()}) · by KMK"
+        } catch (e: Exception) { }
+
         testBtn.setOnClickListener {
             val key = input.text.toString().trim()
             if (key.isEmpty()) { status.text = "Enter a key first"; return@setOnClickListener }
