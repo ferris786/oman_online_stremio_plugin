@@ -103,15 +103,35 @@ function qualityFromName(name) {
     return `${res} ${kind}`;
 }
 
-// rough ranking: prefer 1080p BluRay/WEB-DL around 2-8GB, healthy seeders
+// rough ranking: healthy seeders first, 1080p as the sweet-spot default;
+// 4K is fully available but ranks below 1080p so autoplay picks sensibly
 function rankCandidate(c) {
     let score = Math.min(parseInt(c.seeders) || 0, 200); // seeders matter most
     if (c.sizeBytes > 1.5e9 && c.sizeBytes < 9e9) score += 150; // sane size
-    if (c.sizeBytes > 30e9) score -= 200;                    // remux monsters
+    if (c.sizeBytes > 60e9) score -= 200;                    // true monsters
     if (c.quality.startsWith("1080p")) score += 120;
-    if (c.quality.startsWith("2160p")) score -= 60;          // heavy for TVs
     if (c.quality.startsWith("720p")) score += 60;
     return score;
+}
+
+// YTS: exact by-IMDb movie lookup with every quality tier (720p/1080p/2160p)
+async function ytsTorrents(imdbId) {
+    try {
+        const data = await fetchJson(
+            `https://yts.lt/api/v2/list_movies.json?query_term=${encodeURIComponent(imdbId)}`, 10000);
+        const movie = data && data.data && data.data.movies && data.data.movies[0];
+        if (!movie || !Array.isArray(movie.torrents)) return [];
+        return movie.torrents.map(t => ({
+            name: `${movie.title} ${t.quality} ${t.type || ""} YTS`.trim(),
+            hash: String(t.hash || "").toLowerCase(),
+            seeders: parseInt(t.seeds) || 0,
+            sizeBytes: parseInt(t.size_bytes) || 0,
+            quality: `${t.quality} ${t.type === "web" ? "WEB" : (t.type || "BluRay")}`,
+            source: "YTS"
+        })).filter(t => t.hash.length >= 20 && t.sizeBytes > 300e6 && t.sizeBytes < 70e9);
+    } catch (e) {
+        return []; // yts unreachable - fall back to other indexers
+    }
 }
 
 async function enTorrents(imdbId) {
@@ -137,7 +157,7 @@ async function enTorrents(imdbId) {
                 if (!r || !r.info_hash || r.name === "No results returned") continue;
                 const seeders = parseInt(r.seeders) || 0;
                 const sizeBytes = parseInt(r.size) || 0;
-                if (seeders < 3 || sizeBytes < 400e6 || sizeBytes > 40e9) continue;
+                if (seeders < 3 || sizeBytes < 400e6 || sizeBytes > 70e9) continue;
                 const lname = r.name.toLowerCase();
                 if (/\b(cam|ts|screener|x?264.*HC|hdcam)\b/.test(lname)) continue;
                 if (year && !lname.includes(String(year)) && title.length > 4) {
@@ -160,7 +180,13 @@ async function enTorrents(imdbId) {
         } catch (e) { /* indexer down - continue */ }
     }
 
-    const candidates = [...byHash.values()].sort((a, b) => rankCandidate(b) - rankCandidate(a)).slice(0, 12);
+    // YTS first (exact IMDb match, all qualities incl 4K), TPB as supplement
+    const yts = await ytsTorrents(imdbId);
+    for (const t of yts) {
+        if (!byHash.has(t.hash)) byHash.set(t.hash, t);
+    }
+
+    const candidates = [...byHash.values()].sort((a, b) => rankCandidate(b) - rankCandidate(a)).slice(0, 15);
     const value = { torrents: candidates, title: meta.name, year };
     torrentCache.set(imdbId, value);
     return value;

@@ -94,9 +94,11 @@ class MovieDetailActivity : Activity() {
                 val title = meta?.optString("name") ?: movie?.name ?: ""
                 val year = meta?.optString("year") ?: (movie?.year ?: "")
 
-                // Direct apibay search from the TV FIRST - fastest path and
-                // not datacenter-blocked. The addon's list is the fallback.
-                var candidates = if (title.isNotEmpty()) Api.apibaySearch(title, year) else emptyList()
+                // Device-direct indexes first (not datacenter-blocked): YTS by
+                // exact IMDb match + TPB by title. Addon's merged list adds more.
+                var candidates = Api.ytsByImdb(imdbId)
+                if (title.isNotEmpty()) candidates = candidates + Api.apibaySearch(title, year)
+                candidates = candidates.distinctBy { it.hash }
                 if (candidates.isEmpty()) candidates = Api.enTorrents(imdbId)
                 if (candidates.isEmpty()) throw Exception("no torrent sources found for this movie")
 
@@ -112,11 +114,11 @@ class MovieDetailActivity : Activity() {
                     return@Thread
                 }
 
-                // resolve the best (up to 3) to direct links; failures now
+                // resolve the best (up to 6) to direct links; failures now
                 // carry the real TorBox reason
                 val streams = ArrayList<PlayStream>()
                 var lastError: String? = null
-                for (t in playable.take(3)) {
+                for (t in playable.take(6)) {
                     val result = Torbox.resolveStream(key, t.hash, t.name)
                     if (result.startsWith("http")) {
                         val gb = t.sizeBytes / 1e9
