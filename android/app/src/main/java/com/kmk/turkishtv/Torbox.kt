@@ -237,6 +237,7 @@ object Torbox {
                     // fall back to name heuristics when sizes are unknown.
                     data class Pick(val id: Long, val size: Long, val score: Int)
                     var best: Pick? = null
+                    var hasArchive = false
                     val releaseName = t.optString("name", "").lowercase()
                     for (f in 0 until files.length()) {
                         val file = files.optJSONObject(f) ?: continue
@@ -246,30 +247,38 @@ object Torbox {
                             fname.endsWith(".avi") || fname.endsWith(".ts") ||
                             fname.endsWith(".m2ts") || fname.endsWith(".wmv") ||
                             fname.endsWith(".mov") || fname.endsWith(".mpg") ||
-                            fname.endsWith(".mpeg") || fname.endsWith(".flv")
-                        if (!isVideo) continue
-                        // junk heuristics
+                            fname.endsWith(".mpeg") || fname.endsWith(".flv") ||
+                            fname.endsWith(".m4v") || fname.endsWith(".divx") ||
+                            fname.endsWith(".vob")
+                        val isIso = fname.endsWith(".iso")
+                        if (fname.endsWith(".rar") || fname.endsWith(".zip") || fname.endsWith(".7z")) {
+                            hasArchive = true
+                            continue
+                        }
+                        if (!isVideo && !isIso) continue
                         val junk = fname.contains("sample") || fname.contains("trailer") ||
                             fname.contains("proof") || fname.contains("extra") ||
                             fname.contains("featurette")
                         var score = 0
                         if (junk) score -= 100
+                        if (isIso) score -= 40          // only VLC plays ISOs; last resort
                         val size = file.optLong("size", 0)
                         if (size > 100_000_000L) score += 50       // definitely a real movie file
                         if (size == 0L) score -= 10                 // size unknown
-                        // name similarity to the release name helps when all sizes are 0
                         val norm = { x: String -> x.replace(Regex("[^a-z0-9]"), "") }
                         val fn = norm(fname); val rn = norm(releaseName)
                         if (rn.length > 8 && fn.length > 8 && (fn.contains(rn.substring(0, 12)) || rn.contains(fn.substring(0, 12)))) score += 20
-                        val candidate = Pick(file.optLong("id"), size, score)
-                        // compare: score first, then size, then prefer .mp4/.mkv
+                        val candidate = Pick(file.optLong("id", 0), size, score)
                         val better = best == null ||
                             candidate.score > best!!.score ||
                             (candidate.score == best!!.score && candidate.size > best!!.size)
                         if (better) best = candidate
                     }
-                    val bestId = best?.id ?: -1L
-                    if (bestId > 0) {
+                    // IMPORTANT: TorBox file ids are 0-indexed on many torrents
+                    // (single-file releases are id=0) - "bestId > 0" wrongly
+                    // rejected them, which is what flooded "No video file".
+                    if (best != null) {
+                        val bestId = best!!.id
                         // 3. direct link (token query param is required by the API)
                         val torrentId = if (t.optLong("id", -1) > 0) t.optLong("id") else knownTorrentId
                         val dl = call("$BASE/torrents/requestdl?token=$key&torrent_id=$torrentId&file_id=$bestId", key)
@@ -277,10 +286,11 @@ object Torbox {
                         if (link.startsWith("http")) return link
                         return "TorBox refused download: ${dl.optString("error", dl.optString("detail", "?"))}"
                     }
-                    // files listed but no video in them - genuinely a pack of
-                    // other stuff; only fail on the LAST attempt
-                    if (attempt == 7) return "No video file in this torrent"
-                    break // retry in case listing updates
+                    // files listed but nothing playable: RAR/ISO-only pack or
+                    // a non-video bundle. Bail IMMEDIATELY - no point retrying
+                    // (this used to burn 12s per source before failing).
+                    return if (hasArchive) "Archive torrent (RAR) - skipped"
+                    else "No video file in this torrent"
                 }
             } catch (e: Exception) {
                 // transient - retry

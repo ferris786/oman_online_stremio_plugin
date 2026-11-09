@@ -72,6 +72,10 @@ object MuxEngine {
         all = all.map { it.copy(cached = cachedSet.contains(it.hash)) }
 
         // ---- 5. filter (profile-driven) ----
+        // first drop hopeless uploads before they waste a resolve attempt:
+        // RAR-packed/disc-image releases and RU-tracker dumps
+        val archiveRe = Regex("""\.rar\b|\.iso\b|rutor|-RUS\b|\bRUS\b.*\(2\d{3}\)""", RegexOption.IGNORE_CASE)
+        all = all.filter { s -> !archiveRe.containsMatchIn(s.name) }
         all = all.filter { s ->
             if (s.seeders < config.minSeeders) return@filter false
             if (config.hide4k && s.attrs.resolution == 2160) return@filter false
