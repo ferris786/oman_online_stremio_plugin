@@ -386,12 +386,10 @@ app.get("/xs/master.m3u8", async (req, res) => {
         const names = xs.variantNames(state.manifest);
         if (!names.length) return res.status(404).send("No variants");
 
-        const key = (await xs.getKey(state)).toString("hex");
         const lines = [
             "#EXTM3U",
             "#EXT-X-VERSION:3",
-            "#EXT-X-INDEPENDENT-SEGMENTS",
-            `#WAHAB-XS-KEY:${key}`
+            "#EXT-X-INDEPENDENT-SEGMENTS"
         ];
         const audioTracks = state.manifest.audio || [];
         for (const track of audioTracks) {
