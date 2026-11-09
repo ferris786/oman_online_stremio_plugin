@@ -259,14 +259,30 @@ async function streamIsPlayable(url) {
             if (!child.startsWith("#EXTM3U")) return false;
             const segLines = child.split("\n").map(l => l.trim()).filter(l => l && !l.startsWith("#"));
             if (segLines.length === 0) return true;
-            const segUrl = abs(checkUrl, segLines[0]);
-            const segResp = await axios.get(segUrl, {
-                headers: { "User-Agent": UA, "Range": "bytes=0-200" },
-                timeout: 7000,
-                responseType: "arraybuffer",
-                validateStatus: () => true
-            });
-            return segResp.status === 200 || segResp.status === 206;
+
+            // vidara (and friends) expire content UNEVENLY: early segments can
+            // 404 while later ones live, and CDN geo-routing means our check
+            // may not match the client's view. Sample THREE points (first /
+            // middle / last) - any failure drops the source.
+            const probe = async (segLine) => {
+                const segUrl = abs(checkUrl, segLine);
+                try {
+                    const r = await axios.get(segUrl, {
+                        headers: { "User-Agent": UA, "Range": "bytes=0-200" },
+                        timeout: 7000,
+                        responseType: "arraybuffer",
+                        validateStatus: () => true
+                    });
+                    return r.status === 200 || r.status === 206;
+                } catch (e) { return false; }
+            };
+            const probes = [
+                segLines[0],
+                segLines[Math.floor(segLines.length / 2)],
+                segLines[segLines.length - 1]
+            ];
+            const results = await Promise.all(probes.map(probe));
+            return results.every(Boolean);
         }
 
         return resp.status === 200 || resp.status === 206;
