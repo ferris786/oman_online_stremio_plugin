@@ -229,7 +229,47 @@ async function streamIsPlayable(url) {
             transformResponse: x => x,
             validateStatus: () => true
         });
-        return status === 200 && typeof data === "string" && data.startsWith("#EXTM3U");
+        if (status !== 200 || typeof data !== "string" || !data.startsWith("#EXTM3U")) {
+            return false;
+        }
+
+        // The playlist can be valid while its SEGMENTS are gone from the CDN
+        // (vidara removes old content). Spot-check the first segment with a
+        // tiny Range request so dead sources are dropped BEFORE playback.
+        const abs = (base, line) => {
+            if (line.startsWith("http")) return line;
+            if (line.startsWith("/")) return new URL(base).origin + line;
+            return base.substring(0, base.lastIndexOf("/") + 1) + line;
+        };
+        let lines = data.split("\n").map(l => l.trim()).filter(l => l && !l.startsWith("#"));
+        if (lines.length === 0) return false;
+
+        let checkUrl = abs(url, lines[0]);
+        const resp = await axios.get(checkUrl, {
+            headers: { "User-Agent": UA, "Range": "bytes=0-200", "Accept": "*/*" },
+            timeout: 7000,
+            responseType: "arraybuffer",
+            validateStatus: () => true
+        });
+        const ct = (resp.headers["content-type"] || "").toLowerCase();
+
+        // if it's a variant playlist, check ITS first segment too
+        if (ct.includes("mpegurl") || ct.includes("text")) {
+            const child = Buffer.from(resp.data).toString("utf-8");
+            if (!child.startsWith("#EXTM3U")) return false;
+            const segLines = child.split("\n").map(l => l.trim()).filter(l => l && !l.startsWith("#"));
+            if (segLines.length === 0) return true;
+            const segUrl = abs(checkUrl, segLines[0]);
+            const segResp = await axios.get(segUrl, {
+                headers: { "User-Agent": UA, "Range": "bytes=0-200" },
+                timeout: 7000,
+                responseType: "arraybuffer",
+                validateStatus: () => true
+            });
+            return segResp.status === 200 || segResp.status === 206;
+        }
+
+        return resp.status === 200 || resp.status === 206;
     } catch (e) {
         return false;
     }
