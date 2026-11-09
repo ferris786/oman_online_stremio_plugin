@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#000000"
+    android:keepScreenOn="true">
+
+    <org.videolan.libvlc.util.VLCVideoLayout
+        android:id="@+id/vlcVideoLayout"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:fitsSystemWindows="false" />
+
+    <TextView
+        android:id="@+id/vlcStatus"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|end"
+        android:layout_margin="20dp"
+        android:background="#88000000"
+        android:paddingStart="12dp"
+        android:paddingEnd="12dp"
+        android:paddingTop="6dp"
+        android:paddingBottom="6dp"
+        android:textColor="@color/accent"
+        android:textSize="14sp" />
+
+    <TextView
+        android:id="@+id/vlcHint"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|start"
+        android:layout_margin="20dp"
+        android:background="#88000000"
+        android:padding="8dp"
+        android:text="OK: pause · ◀ ▶: seek · MENU: sources · back: exit"
+        android:textColor="@color/text_dim"
+        android:textSize="12sp" />
+</FrameLayout>

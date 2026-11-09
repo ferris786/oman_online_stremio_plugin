@@ -126,6 +126,23 @@ class SettingsActivity : Activity() {
                 "Wahab TV v${pi.versionName} (${if (android.os.Build.VERSION.SDK_INT >= 28) pi.longVersionCode else pi.versionCode.toLong()}) · by KMK"
         } catch (e: Exception) { }
 
+        // ---- Player engine (English movies) ----
+        val prefs = getSharedPreferences("settings", MODE_PRIVATE)
+        val exoBtn = findViewById<Button>(R.id.engineExo)
+        val vlcBtn = findViewById<Button>(R.id.engineVlc)
+        val extBtn = findViewById<Button>(R.id.engineExt)
+        fun paintEngine() {
+            val cur = prefs.getString("player_engine", "exo")
+            fun mark(b: Button, on: Boolean) {
+                b.setTextColor(resources.getColor(if (on) R.color.accent else R.color.text_dim))
+            }
+            mark(exoBtn, cur == "exo"); mark(vlcBtn, cur == "vlc"); mark(extBtn, cur == "external")
+        }
+        paintEngine()
+        exoBtn.setOnClickListener { prefs.edit().putString("player_engine", "exo").apply(); paintEngine() }
+        vlcBtn.setOnClickListener { prefs.edit().putString("player_engine", "vlc").apply(); paintEngine() }
+        extBtn.setOnClickListener { prefs.edit().putString("player_engine", "external").apply(); paintEngine() }
+
         testBtn.setOnClickListener {
             val key = input.text.toString().trim()
             if (key.isEmpty()) { status.text = "Enter a key first"; return@setOnClickListener }

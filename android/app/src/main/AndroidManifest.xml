@@ -42,6 +42,12 @@
         </provider>
 
         <activity
+            android:name=".VlcPlayerActivity"
+            android:exported="false"
+            android:keepScreenOn="true"
+            android:screenOrientation="landscape" />
+
+        <activity
             android:name=".SourcePickerActivity"
             android:exported="false"
             android:screenOrientation="landscape" />

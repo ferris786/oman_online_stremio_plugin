@@ -9,10 +9,13 @@ android {
 
     defaultConfig {
         applicationId = "com.kmk.turkishtv"
+        ndk {
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+        }
         minSdk = 21
         targetSdk = 34
-        versionCode = 25
-        versionName = "3.8"
+        versionCode = 26
+        versionName = "3.9"
     }
 
     buildTypes {
@@ -37,4 +40,5 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer-hls:1.4.1")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("io.coil-kt:coil:2.6.0")
+    implementation("org.videolan.android:libvlc-all:3.5.1")
 }

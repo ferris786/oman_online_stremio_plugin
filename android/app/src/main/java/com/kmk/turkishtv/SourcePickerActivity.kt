@@ -1,8 +1,11 @@
 package com.kmk.turkishtv
 
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
+import android.widget.Toast
 import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
@@ -52,6 +55,68 @@ class SourcePickerActivity : Activity() {
         recycler.adapter = PickerAdapter()
     }
 
+    /**
+     * Player routing (English movies only; Turkish always uses ExoPlayer):
+     * exo -> PlayerActivity, vlc -> embedded VlcPlayerActivity,
+     * external -> resolve in place and hand the URL to any installed player
+     * (MX Player / Just Player / VLC app...), Stremio-style.
+     */
+    private fun launchWithEngine(position: Int) {
+        val engine = getSharedPreferences("settings", MODE_PRIVATE).getString("player_engine", "exo") ?: "exo"
+        val streamsJson = intent.getStringExtra("streamsJson") ?: return
+
+        if (engine == "exo") {
+            startActivity(Intent(this, PlayerActivity::class.java).apply {
+                putExtra("videoId", intent.getStringExtra("videoId"))
+                putExtra("videoTitle", intent.getStringExtra("videoTitle"))
+                putExtra("streamsJson", streamsJson)
+                putExtra("startIndex", position)
+            })
+            return
+        }
+        if (engine == "vlc") {
+            startActivity(Intent(this, VlcPlayerActivity::class.java).apply {
+                putExtra("videoId", intent.getStringExtra("videoId"))
+                putExtra("streamsJson", streamsJson)
+                putExtra("startIndex", position)
+            })
+            return
+        }
+
+        // external player: resolve the chosen source here, then hand off
+        val arr = org.json.JSONArray(streamsJson)
+        val st = arr.optJSONObject(position) ?: return
+        val key = Torbox.apiKey(this)
+        if (key == null) {
+            Toast.makeText(this, "Add your TorBox key in Settings first", Toast.LENGTH_LONG).show()
+            return
+        }
+        if (!st.optBoolean("cached", true)) {
+            Toast.makeText(this, "External player needs an instant (⚡) source\nor switch the engine in Settings", Toast.LENGTH_LONG).show()
+            return
+        }
+        val dlg = AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog)
+            .setMessage("Resolving…").setCancelable(false).show()
+        Thread {
+            val link = Torbox.resolveStream(key, st.optString("hash", ""), st.optString("dn", ""))
+            runOnUiThread {
+                dlg.dismiss()
+                if (link.startsWith("http")) {
+                    try {
+                        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(link)).apply {
+                            setDataAndType(Uri.parse(link), "video/*")
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        })
+                    } catch (e: Exception) {
+                        Toast.makeText(this, "No external player installed (MX Player / Just Player / VLC)", Toast.LENGTH_LONG).show()
+                    }
+                } else {
+                    Toast.makeText(this, link, Toast.LENGTH_LONG).show()
+                }
+            }
+        }.start()
+    }
+
     private inner class PickerAdapter : RecyclerView.Adapter<PickerAdapter.VH>() {
         inner class VH(v: View) : RecyclerView.ViewHolder(v) {
             val badge: TextView = v.findViewById(R.id.sBadge)
@@ -77,14 +142,7 @@ class SourcePickerActivity : Activity() {
                 holder.itemView.animate().scaleX(scale).scaleY(scale).setDuration(120).start()
                 holder.itemView.translationZ = if (hasFocus) 12f else 0f
             }
-            holder.itemView.setOnClickListener {
-                startActivity(Intent(this@SourcePickerActivity, PlayerActivity::class.java).apply {
-                    putExtra("videoId", intent.getStringExtra("videoId"))
-                    putExtra("videoTitle", intent.getStringExtra("videoTitle"))
-                    putExtra("streamsJson", intent.getStringExtra("streamsJson"))
-                    putExtra("startIndex", position)
-                })
-            }
+            holder.itemView.setOnClickListener { launchWithEngine(position) }
         }
     }
 }
