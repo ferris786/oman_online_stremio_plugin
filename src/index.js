@@ -486,9 +486,9 @@ app.get("/xs/segment.ts", async (req, res) => {
     const referer = state.origin + "/";
     const url = isAudio ? xs.audioSegmentUrl(state, index, a) : xs.segmentUrl(state, index, q);
 
-    // BANDWIDTH DIET: redirect to CDN; app decrypts locally
-    return res.redirect(302, url);
-
+    // Server-side decryption (the app-side XDS had a passthrough bug; will
+    // revisit client-side decryption in v4.1). Sources 1-3 are already
+    // bandwidth-free via direct segments; this only affects Source 4.
     try {
         const raw = await xs.fetchEncryptedSegment(url, referer);
 
