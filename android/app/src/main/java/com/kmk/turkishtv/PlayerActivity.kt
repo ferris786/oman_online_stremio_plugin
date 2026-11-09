@@ -90,54 +90,6 @@ class PlayerActivity : Activity() {
         }.start()
     }
 
-    // ---- xtremestream client-side decryption (bandwidth diet) ----
-    // The addon's /xs/segment.ts now 302s to the CDN; the app fetches the
-    // encrypted bytes and decrypts AES-128-CBC locally (IV = segment index)
-    // so video never transits the server. Key comes from #WAHAB-XS-KEY in
-    // the master playlist.
-    @Volatile private var xsKeyHex: String? = null
-
-    private fun maybeCaptureXsKey(url: String) {
-        if (!url.contains("/xs/master")) return
-        Thread {
-            try {
-                val stream = java.net.URL(url).openStream()
-                val txt = stream.bufferedReader().use { it.readText() }
-                stream.close()
-                val m = Regex("#WAHAB-XS-KEY:([0-9a-f]+)").find(txt)
-                if (m != null) xsKeyHex = m.groupValues[1]
-            } catch (e: Exception) { }
-        }.start()
-    }
-
-    /** Fetch a segment URL; if it redirects to an xtremestream CDN path,
-     *  fetch the encrypted bytes and decrypt locally. Returns raw bytes. */
-    private fun fetchAndDecryptSegment(segmentUrl: String, index: Int): ByteArray? {
-        val keyHex = xsKeyHex ?: return null
-        val key = javax.crypto.spec.SecretKeySpec(
-            keyHex.chunked(2).map { it.toInt(16).toByte() }.toByteArray(), "AES")
-        val iv = ByteArray(16)
-        val bb = java.nio.ByteBuffer.wrap(iv)
-        bb.position(8); bb.putLong(index.toLong())
-        val ivSpec = javax.crypto.spec.IvParameterSpec(iv)
-
-        // follow redirect manually
-        val conn = java.net.URL(segmentUrl).openConnection() as java.net.HttpURLConnection
-        conn.instanceFollowRedirects = false
-        conn.connect()
-        val cdnUrl = if (conn.responseCode in 300..399) conn.getHeaderField("Location") else segmentUrl
-        conn.disconnect()
-
-        val cdn = java.net.URL(cdnUrl).openConnection() as java.net.HttpURLConnection
-        cdn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 11) Chrome/120")
-        val enc = cdn.inputStream.use { it.readBytes() }
-        cdn.disconnect()
-
-        val cipher = javax.crypto.Cipher.getInstance("AES/CBC/NoPadding")
-        cipher.init(javax.crypto.Cipher.DECRYPT_MODE, key, ivSpec)
-        return cipher.doFinal(enc)
-    }
-
     private fun buildPlayer(): ExoPlayer {
         // Generous buffers for flaky streaming CDNs: keep 30s minimum / 2 min
         // maximum buffered, start after 3s (5s after a stall).
@@ -151,25 +103,13 @@ class PlayerActivity : Activity() {
             .build()
 
         val httpFactory = DefaultHttpDataSource.Factory()
-        // xtremestream segments are redirected to encrypted CDN files; a
-        // custom ResolverDataSource decrypts them on-device before ExoPlayer
-        // sees the bytes (bandwidth diet: server only serves playlists).
             .setUserAgent("Mozilla/5.0 (Linux; Android 11) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
             .setConnectTimeoutMs(15_000)
             .setReadTimeoutMs(15_000)
             .setAllowCrossProtocolRedirects(true)
 
-        val baseFactory = DefaultHttpDataSource.Factory()
-            .setUserAgent("Mozilla/5.0 (Linux; Android 11) AppleWebKit/537.36 Chrome/120 Safari/537.36")
-            .setConnectTimeoutMs(15_000)
-            .setReadTimeoutMs(30_000)
-            .setAllowCrossProtocolRedirects(true)
-
-        // TODO(v4.1): re-add XsDecryptingDataSource with fixed passthrough
-        // (XDS lifecycle bug broke ALL sources in v4.0; reverting for now —
-        // Source 4/xtremestream will fail but Sources 1-3 work perfectly)
         return ExoPlayer.Builder(applicationContext)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(baseFactory))
+            .setMediaSourceFactory(DefaultMediaSourceFactory(httpFactory))
             .setLoadControl(loadControl)
             .setTrackSelector(DefaultTrackSelector(this))
             .build()
@@ -223,7 +163,6 @@ class PlayerActivity : Activity() {
             if (s.cached) resolveLazy(s, -1L) else resolveUncached(s)
             return
         }
-        maybeCaptureXsKey(s.url)
         player.setMediaItem(MediaItem.fromUri(s.url))
         player.prepare()
         val pos = if (resumeMs >= 0) resumeMs else WatchState.getPosition(this, videoId)
