@@ -199,7 +199,9 @@ app.get("/version.json", (req, res) => {
     res.sendFile(versionFile);
 });
 
+const APK_GITHUB_RELEASE = process.env.APK_RELEASE_URL || null;
 app.get(["/apk", "/app.apk"], (req, res) => {
+    if (APK_GITHUB_RELEASE) return res.redirect(302, APK_GITHUB_RELEASE);
     if (!fs.existsSync(APK_PATH)) {
         return res.status(404).send("APK not built - see android/README.md");
     }
@@ -384,7 +386,13 @@ app.get("/xs/master.m3u8", async (req, res) => {
         const names = xs.variantNames(state.manifest);
         if (!names.length) return res.status(404).send("No variants");
 
-        const lines = ["#EXTM3U", "#EXT-X-VERSION:3", "#EXT-X-INDEPENDENT-SEGMENTS"];
+        const key = (await xs.getKey(state)).toString("hex");
+        const lines = [
+            "#EXTM3U",
+            "#EXT-X-VERSION:3",
+            "#EXT-X-INDEPENDENT-SEGMENTS",
+            `#WAHAB-XS-KEY:${key}`
+        ];
         const audioTracks = state.manifest.audio || [];
         for (const track of audioTracks) {
             const lang = track.lang || "und";
@@ -477,6 +485,9 @@ app.get("/xs/segment.ts", async (req, res) => {
 
     const referer = state.origin + "/";
     const url = isAudio ? xs.audioSegmentUrl(state, index, a) : xs.segmentUrl(state, index, q);
+
+    // BANDWIDTH DIET: redirect to CDN; app decrypts locally
+    return res.redirect(302, url);
 
     try {
         const raw = await xs.fetchEncryptedSegment(url, referer);
