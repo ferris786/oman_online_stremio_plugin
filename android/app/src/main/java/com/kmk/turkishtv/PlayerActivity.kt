@@ -165,12 +165,11 @@ class PlayerActivity : Activity() {
             .setReadTimeoutMs(30_000)
             .setAllowCrossProtocolRedirects(true)
 
-        val xsFactory = androidx.media3.datasource.DataSource.Factory {
-            XsDecryptingDataSource({ xsKeyHex }, baseFactory.createDataSource())
-        }
-
+        // TODO(v4.1): re-add XsDecryptingDataSource with fixed passthrough
+        // (XDS lifecycle bug broke ALL sources in v4.0; reverting for now —
+        // Source 4/xtremestream will fail but Sources 1-3 work perfectly)
         return ExoPlayer.Builder(applicationContext)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(xsFactory))
+            .setMediaSourceFactory(DefaultMediaSourceFactory(baseFactory))
             .setLoadControl(loadControl)
             .setTrackSelector(DefaultTrackSelector(this))
             .build()
