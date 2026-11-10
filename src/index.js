@@ -16,6 +16,8 @@ const { getSeries, getMeta } = require("./catalog");
 const { getStream } = require("./stream");
 const xs = require("./extractors/xtremestream");
 const en = require("./english");
+const publicbase = require("./publicbase");
+publicbase.initFromEnv();
 const QRCode = require("qrcode");
 const urlModule = require("url");
 
@@ -250,7 +252,7 @@ async function torboxKeyValid(key) {
 app.post("/pair/start", (req, res) => res.json({ code: newPairCode() }));
 
 app.get("/pair/qr/:code", async (req, res) => {
-    const host = process.env.RENDER_EXTERNAL_URL || `http://127.0.0.1:${PORT}`;
+    const host = publicbase.get();
     try {
         const png = await QRCode.toBuffer(`${host}/pair/${req.params.code}`, { width: 420, margin: 2 });
         res.setHeader("Content-Type", "image/png");
@@ -523,6 +525,10 @@ app.get("/xs/segment.ts", async (req, res) => {
         if (!res.headersSent) res.status(502).send("xtremestream: " + e.message);
     }
 });
+
+// remember the public base URL from request headers (nginx/Caddy set
+// X-Forwarded-Proto + Host) so stream URLs are built with the right host
+app.use((req, res, next) => { publicbase.observe(req); next(); });
 
 const addonInterface = builder.getInterface();
 const addonRouter = getRouter(addonInterface);

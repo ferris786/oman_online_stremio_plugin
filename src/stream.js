@@ -5,6 +5,7 @@ const path = require("path");
 const { getKayiFamilyStream, toAbsoluteEpisode, extractBestbStream, extractStrmupStream, SERIES_NAME_MAP, SEASON_OFFSETS } = require("./kayifamily");
 const { getKayiFamilyTVStream, SERIES_NAME_MAP: KFTV_MAP } = require("./kayifamilytv");
 const { canonicalSlug } = require("./catalog");
+const publicbase = require("./publicbase");
 const { extractKayihome, extractWakeupummah, extractVidara, buildProxyUrl } = require("./extractors/fireplayer");
 const { buildXsStreamUrl } = require("./extractors/xtremestream");
 
@@ -190,7 +191,7 @@ async function getOsmanOnlineLiveStream(siteSlug, abs) {
             );
             if (!embed) continue;
 
-            const proxyHost = process.env.RENDER_EXTERNAL_URL || `http://127.0.0.1:${process.env.PORT || 7000}`;
+            const proxyHost = publicbase.get();
             const streamUrl = await buildXsStreamUrl(embed[0], proxyHost);
             log(`osmanonline.live stream via xtremestream (${embed[0].match(/data=([a-f0-9]+)/)[1].slice(0, 10)}…)`);
             return { url: streamUrl, source: "osmanonline-live" };

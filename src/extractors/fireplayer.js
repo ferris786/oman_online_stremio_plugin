@@ -33,6 +33,7 @@
  */
 
 const axios = require("axios");
+const publicbase = require("../publicbase");
 
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
@@ -41,7 +42,7 @@ function log(msg) {
 }
 
 function proxyHost() {
-    return process.env.RENDER_EXTERNAL_URL || `http://127.0.0.1:${process.env.PORT || 7000}`;
+    return publicbase.get();
 }
 
 // Build a proxy URL that keeps the referer (and optional cookie) for nested fetches.
