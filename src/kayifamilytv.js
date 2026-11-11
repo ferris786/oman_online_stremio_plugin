@@ -1,5 +1,8 @@
 const axios = require("axios");
 const { extractWakeupummah } = require("./extractors/fireplayer");
+const publicbase = require("./publicbase");
+
+const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
 const DEBUG = true;
 function log(msg) {
@@ -128,6 +131,41 @@ async function getKayiFamilyTVStream(osmanSeriesSlug, abs) {
         if (pageTitle.includes('404') || pageTitle.includes('not found') || pageTitle.includes('error')) {
             log('Page not found (based on title)');
             return null;
+        }
+
+        // vidmoly.org embeds (Mehmed and other shows): the embed page carries
+        // a plain-text m3u8 with a ~12h token. Segments REQUIRE Referer:
+        // vidmoly.org, so the stream is served through the addon proxy which
+        // attaches that referer to playlist and segment fetches alike.
+        const vidmolyEmbeds = [...new Set(
+            (data.match(/https?:\/\/vidmoly\.[a-z.]+\/embed-[a-z0-9]+\.html/gi) || [])
+        )];
+        log(`Found ${vidmolyEmbeds.length} vidmoly embed(s)`);
+
+        for (const embed of vidmolyEmbeds) {
+            try {
+                const res = await axios.get(embed, {
+                    headers: {
+                        "User-Agent": UA,
+                        "Referer": "https://kayifamilytv.com/"
+                    },
+                    timeout: 15000,
+                    validateStatus: () => true
+                });
+                const m3u8 = (res.data.match(/https?:\/\/[^"'\s<>]+\.m3u8[^"'\s<>]*/) || [])[0];
+                if (!m3u8) {
+                    log(`vidmoly embed has no m3u8: ${embed.slice(-30)}`);
+                    continue;
+                }
+                log(`Extracted vidmoly m3u8 (${m3u8.slice(0, 60)}...)`);
+                return {
+                    url: `${publicbase.get()}/proxy/master.m3u8?url=${encodeURIComponent(m3u8)}&referer=${encodeURIComponent("https://vidmoly.org/")}`,
+                    type: "hls",
+                    source: "kayifamilytv-vidmoly"
+                };
+            } catch (e) {
+                log(`vidmoly embed error: ${e.message}`);
+            }
         }
 
         // wakeupummah.com FirePlayer embeds (covers src= and data-litespeed-src=)
