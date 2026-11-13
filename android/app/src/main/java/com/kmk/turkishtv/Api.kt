@@ -153,6 +153,71 @@ object Api {
 
     fun enSearch(query: String): List<EnMovie> = parseMovies(get("/en/search/movie/" + encode(query)))
 
+    /** "Just added": releases that became watchable in the last day or two */
+    fun enLatestAdded(): List<EnMovie> = parseMovies(get("/en/catalog/movie/latest"))
+
+    // ---------- Type-ahead search, actors, subtitles ----------
+
+    /** A TMDB suggestion. It has no IMDb id yet - resolveSuggestion() gets one. */
+    data class Suggestion(
+        val tmdbId: Int, val name: String, val year: String?, val poster: String?,
+        val background: String?, val description: String?, val rating: String?
+    )
+
+    data class Person(
+        val personId: Int, val name: String, val role: String?, val photo: String?,
+        val knownFor: List<String>
+    )
+
+    data class Subtitle(val id: String, val lang: String, val label: String, val url: String)
+
+    private fun parseSuggestions(body: String): List<Suggestion> {
+        val arr = JSONObject(body).optJSONArray("suggestions") ?: return emptyList()
+        val out = ArrayList<Suggestion>(arr.length())
+        for (i in 0 until arr.length()) {
+            val o = arr.getJSONObject(i)
+            out.add(Suggestion(o.optInt("tmdbId"), o.optString("name"), o.str("year"),
+                o.str("poster"), o.str("background"), o.str("description"), o.str("rating")))
+        }
+        return out
+    }
+
+    fun suggestMovies(query: String): List<Suggestion> =
+        parseSuggestions(get("/en/suggest/movie/" + encode(query)))
+
+    /** a picked suggestion -> its IMDb id (and Cinemeta meta when it has one) */
+    fun resolveSuggestion(tmdbId: Int): String? {
+        val j = JSONObject(get("/en/tmdb/movie/$tmdbId"))
+        return j.str("imdbId")
+    }
+
+    fun searchPeople(query: String): List<Person> {
+        val arr = JSONObject(get("/en/person/" + encode(query))).optJSONArray("people") ?: return emptyList()
+        val out = ArrayList<Person>(arr.length())
+        for (i in 0 until arr.length()) {
+            val o = arr.getJSONObject(i)
+            out.add(Person(o.optInt("personId"), o.optString("name"), o.str("role"), o.str("photo"),
+                o.strList("knownFor")))
+        }
+        return out
+    }
+
+    fun personMovies(personId: Int): List<Suggestion> =
+        parseSuggestions(get("/en/person/$personId/movies"))
+
+    /** external subtitles for a movie (OpenSubtitles via the addon) */
+    fun subtitles(imdbId: String): List<Subtitle> {
+        val arr = JSONObject(get("/en/subtitles/movie/" + encode(imdbId))).optJSONArray("subtitles")
+            ?: return emptyList()
+        val out = ArrayList<Subtitle>(arr.length())
+        for (i in 0 until arr.length()) {
+            val o = arr.getJSONObject(i)
+            out.add(Subtitle(o.optString("id"), o.optString("lang"),
+                o.optString("label"), o.optString("url")))
+        }
+        return out
+    }
+
     fun enMeta(imdbId: String): JSONObject {
         return JSONObject(get("/en/meta/movie/" + encode(imdbId))).getJSONObject("meta")
     }

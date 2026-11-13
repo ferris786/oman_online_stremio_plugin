@@ -274,4 +274,99 @@ async function enrichAll(seriesList, concurrency = 4) {
     return seriesList;
 }
 
-module.exports = { resolveId, show, episodes, enrichAll, absToSeasonEp, TMDB_IDS };
+// ---------------------------------------------------------------------------
+// Movie search, actor search (English side).
+//
+// TMDB search is far better than Cinemeta's: ~0.6s, popularity-ranked, so
+// "spider" puts the Spider-Man films first. It has one gap - results carry
+// no IMDb id, and the torrent indexers need one - so suggestions are served
+// from TMDB and the IMDb id is resolved only when something is picked.
+// ---------------------------------------------------------------------------
+
+const SUGGEST_TTL = 6 * 60 * 60 * 1000;
+const PERSON_TTL = 24 * 60 * 60 * 1000;
+const EXT_TTL = 30 * 24 * 60 * 60 * 1000;
+const suggestCache = new Map();
+const personCache = new Map();
+
+function memo(map, key, ttl, build) {
+    const hit = map.get(key);
+    if (hit && Date.now() - hit.ts < ttl) return Promise.resolve(hit.value);
+    return build().then(value => {
+        if (map.size > 400) map.delete(map.keys().next().value);
+        map.set(key, { value, ts: Date.now() });
+        return value;
+    });
+}
+
+function movieSuggestion(m) {
+    return {
+        tmdbId: m.id,
+        name: m.title || m.original_title,
+        year: (m.release_date || "").slice(0, 4) || null,
+        poster: img(m.poster_path, "w342"),
+        background: img(m.backdrop_path, "w780"),
+        description: m.overview || null,
+        rating: m.vote_average ? m.vote_average.toFixed(1) : null,
+        popularity: m.popularity || 0
+    };
+}
+
+/** type-ahead movie suggestions, popularity-ranked, no IMDb id yet */
+function suggestMovies(query) {
+    const q = query.trim().toLowerCase();
+    if (q.length < 2) return Promise.resolve([]);
+    return memo(suggestCache, q, SUGGEST_TTL, async () => {
+        const data = await get("/search/movie", { query: q, include_adult: false });
+        return (data.results || [])
+            .filter(m => m.poster_path)
+            .sort((a, b) => (b.popularity || 0) - (a.popularity || 0))
+            .slice(0, 20)
+            .map(movieSuggestion);
+    });
+}
+
+/** tmdb movie id -> imdb id (cached hard; it never changes) */
+function imdbIdOf(tmdbId) {
+    return memo(suggestCache, `ext:${tmdbId}`, EXT_TTL, async () => {
+        const d = await get(`/movie/${tmdbId}/external_ids`);
+        return d && d.imdb_id ? d.imdb_id : null;
+    });
+}
+
+/** actor / director search: who they are and what they are known for */
+function searchPeople(query) {
+    const q = query.trim().toLowerCase();
+    if (q.length < 2) return Promise.resolve([]);
+    return memo(personCache, `p:${q}`, PERSON_TTL, async () => {
+        const data = await get("/search/person", { query: q, include_adult: false });
+        return (data.results || [])
+            .filter(p => p.profile_path)
+            .slice(0, 10)
+            .map(p => ({
+                personId: p.id,
+                name: p.name,
+                role: p.known_for_department || null,
+                photo: img(p.profile_path, "w342"),
+                knownFor: (p.known_for || []).map(k => k.title || k.name).filter(Boolean).slice(0, 3)
+            }));
+    });
+}
+
+/** an actor's films, best known first */
+function personMovies(personId) {
+    return memo(personCache, `pm:${personId}`, PERSON_TTL, async () => {
+        const d = await get(`/person/${personId}/movie_credits`);
+        const seen = new Set();
+        return (d.cast || [])
+            .filter(m => m.poster_path && !seen.has(m.id) && seen.add(m.id))
+            .sort((a, b) => (b.popularity || 0) - (a.popularity || 0))
+            .slice(0, 40)
+            .map(movieSuggestion);
+    });
+}
+
+module.exports = {
+    resolveId, show, episodes, enrichAll, absToSeasonEp, TMDB_IDS,
+    suggestMovies, imdbIdOf, searchPeople, personMovies
+};

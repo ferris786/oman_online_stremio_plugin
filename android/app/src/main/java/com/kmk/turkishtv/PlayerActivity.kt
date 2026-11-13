@@ -58,6 +58,12 @@ class PlayerActivity : Activity() {
     private var stalls = 0
     private var diagVisible = false
 
+    // external subtitles (English movies): fetched in the background, and
+    // attached to the media item only when one is actually picked, so people
+    // who never want subtitles pay nothing for them.
+    private var externalSubs: List<Api.Subtitle> = emptyList()
+    private var activeSub: Api.Subtitle? = null
+
     data class PStream(val name: String, val title: String, val url: String,
                         val hash: String = "", val dn: String = "",
                         val cached: Boolean = true, val encode: String = "")
@@ -159,6 +165,50 @@ class PlayerActivity : Activity() {
         }.start()
 
         loadNextEpisode()
+        loadSubtitles()
+    }
+
+    /** Turkish episodes are hard-subbed, so only movies get a subtitle list. */
+    private fun loadSubtitles() {
+        val imdbId = videoId.removePrefix("movie:").takeIf { videoId.startsWith("movie:") && it.startsWith("tt") }
+            ?: return
+        Thread {
+            try {
+                val subs = Api.subtitles(imdbId)
+                runOnUiThread { if (!isFinishing) externalSubs = subs }
+            } catch (e: Exception) { /* sheet simply shows none */ }
+        }.start()
+    }
+
+    /** Build the item for a url, carrying the chosen external subtitle if any. */
+    private fun mediaItemFor(url: String): MediaItem {
+        val b = MediaItem.Builder().setUri(url)
+        activeSub?.let { s ->
+            b.setSubtitleConfigurations(listOf(
+                MediaItem.SubtitleConfiguration.Builder(android.net.Uri.parse(s.url))
+                    .setMimeType(androidx.media3.common.MimeTypes.APPLICATION_SUBRIP)
+                    .setLanguage(s.lang)
+                    .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
+                    .build()))
+        }
+        return b.build()
+    }
+
+    /** Re-prepare the current stream with a different external subtitle. */
+    private fun applyExternalSub(sub: Api.Subtitle?) {
+        activeSub = sub
+        val url = streams.getOrNull(streamIndex)?.url ?: return
+        if (url.isEmpty()) return
+        val pos = player.currentPosition
+        playbackStarted = false
+        player.setMediaItem(mediaItemFor(url))
+        player.prepare()
+        if (pos > Config.RESUME_THRESHOLD_MS) player.seekTo(pos)
+        player.playWhenReady = true
+        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, sub == null).build()
+        Toast.makeText(this, if (sub == null) "Subtitles off" else "Subtitles: ${sub.label}",
+            Toast.LENGTH_SHORT).show()
     }
 
     /** Terminal and Ottoman skins set their text in caps */
@@ -271,7 +321,7 @@ class PlayerActivity : Activity() {
             if (s.cached) resolveLazy(s, -1L) else resolveUncached(s)
             return
         }
-        player.setMediaItem(MediaItem.fromUri(s.url))
+        player.setMediaItem(mediaItemFor(s.url))
         player.prepare()
         val pos = if (resumeMs >= 0) resumeMs else resumePosition()
         if (pos > Config.RESUME_THRESHOLD_MS && pos < 4 * 60 * 60 * 1000) {
@@ -339,7 +389,7 @@ class PlayerActivity : Activity() {
                 if (result.startsWith("http")) {
                     val pos = if (seekTo >= 0) seekTo else resumePosition()
                     playbackStarted = false
-                    player.setMediaItem(MediaItem.fromUri(result))
+                    player.setMediaItem(mediaItemFor(result))
                     player.prepare()
                     if (pos > Config.RESUME_THRESHOLD_MS) player.seekTo(pos)
                     player.playWhenReady = true
@@ -404,7 +454,7 @@ class PlayerActivity : Activity() {
                             if (isFinishing) return@runOnUiThread
                             dialog.dismiss()
                             playbackStarted = false
-                            player.setMediaItem(MediaItem.fromUri(link))
+                            player.setMediaItem(mediaItemFor(link))
                             player.prepare()
                             player.playWhenReady = true
                         }
@@ -453,7 +503,7 @@ class PlayerActivity : Activity() {
             return
         }
         val pos = player.currentPosition
-        player.setMediaItem(MediaItem.fromUri(s.url))
+        player.setMediaItem(mediaItemFor(s.url))
         player.prepare()
         if (pos > Config.RESUME_THRESHOLD_MS) player.seekTo(pos)
         player.playWhenReady = true
@@ -760,7 +810,7 @@ class PlayerActivity : Activity() {
                 }
             }
         }
-        if (audio.size <= 1 && subs.isEmpty()) {
+        if (audio.size <= 1 && subs.isEmpty() && externalSubs.isEmpty()) {
             Toast.makeText(this, "This source has a single audio track and no subtitles",
                 Toast.LENGTH_SHORT).show()
             return
@@ -812,28 +862,38 @@ class PlayerActivity : Activity() {
         }
 
         root.addView(header("Subtitles"))
-        val textOff = player.trackSelectionParameters.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT) ||
-            subs.none { (g, i, _) -> g.isTrackSelected(i) }
-        root.addView(row("0  Off", textOff) {
-            player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+        val embeddedOn = subs.any { (g, i, _) -> g.isTrackSelected(i) }
+        root.addView(row("0  Off", activeSub == null && !embeddedOn) {
+            if (activeSub != null) applyExternalSub(null)
+            else player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
                 .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true).build()
         })
-        if (subs.isEmpty()) {
+        var n = 0
+        // tracks carried inside the stream
+        subs.forEach { (g, i, f) ->
+            n++
+            val lang = f.language?.takeIf { it.isNotBlank() } ?: "und"
+            root.addView(row("$n  $lang   in stream", g.isTrackSelected(i)) {
+                activeSub = null
+                player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                    .setOverrideForType(TrackSelectionOverride(g.mediaTrackGroup, i))
+                    .build()
+            })
+        }
+        // side-loaded files from OpenSubtitles (movies). Picking one re-prepares
+        // the stream at the same position, so nobody pays for subtitles they
+        // never asked for.
+        externalSubs.forEach { s ->
+            n++
+            root.addView(row("$n  ${s.label}", activeSub?.url == s.url) { applyExternalSub(s) })
+        }
+        if (n == 0) {
             root.addView(TextView(this).apply {
-                text = if (skin.upper) "NONE IN THIS STREAM" else "None in this stream"
+                text = if (skin.upper) "NONE FOUND FOR THIS TITLE" else "None found for this title"
                 setTextColor(dim); textSize = 12f; typeface = face
                 setPadding(pad / 2, (d * 4).toInt(), 0, 0)
             })
-        } else {
-            subs.forEachIndexed { n, (g, i, f) ->
-                val lang = f.language?.takeIf { it.isNotBlank() } ?: "und"
-                root.addView(row("${n + 1}  $lang", g.isTrackSelected(i)) {
-                    player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
-                        .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
-                        .setOverrideForType(TrackSelectionOverride(g.mediaTrackGroup, i))
-                        .build()
-                })
-            }
         }
 
         val scroll = android.widget.ScrollView(this).apply { addView(root) }

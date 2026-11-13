@@ -40,10 +40,25 @@
             android:maxLines="1" />
 
         <TextView
-            android:id="@+id/searchBtn"
+            android:id="@+id/voiceBtn"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginStart="12dp"
+            android:background="@drawable/btn_primary"
+            android:focusable="true"
+            android:clickable="true"
+            android:paddingStart="20dp" android:paddingEnd="20dp"
+            android:paddingTop="11dp" android:paddingBottom="11dp"
+            android:text="🎤  Speak"
+            android:textColor="@color/btn_primary_text"
+            android:textSize="15sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/searchBtn"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="10dp"
             android:background="@drawable/btn_primary"
             android:focusable="true"
             android:clickable="true"

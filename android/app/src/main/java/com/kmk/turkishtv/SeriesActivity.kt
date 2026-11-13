@@ -159,19 +159,36 @@ class SeriesActivity : Activity() {
         newRow.view.visibility = if (fresh.isEmpty()) View.GONE else View.VISIBLE
     }
 
-    /** Movie rows arrive one by one as the addon answers; each becomes a row. */
+    /**
+     * Movie rows arrive one by one as the addon answers; each becomes a row.
+     *
+     * "Just added" is built from upload timestamps, so everything in it can
+     * actually be played tonight. "New releases" is Cinemeta's New catalog,
+     * which is recognisable titles but may run ahead of what is downloadable.
+     * Genre rows are filtered server-side, because Cinemeta's own genre
+     * filter let a fifth of the row through wrongly.
+     */
     private fun loadMovieRows() {
+        data class Row(val title: String, val fetch: () -> List<Api.EnMovie>)
         val wanted = listOf(
-            "Popular Movies" to null, "Action" to "Action", "Comedy" to "Comedy",
-            "Drama" to "Drama", "Sci-Fi" to "Sci-Fi", "Thriller" to "Thriller",
-            "Animation" to "Animation"
+            Row("Just added") { Api.enLatestAdded() },
+            Row("New releases") { Api.enCatalog("year", 0) },
+            Row("Popular Movies") { Api.enCatalog("top", 0) },
+            Row("Featured") { Api.enCatalog("imdbRating", 0) },
+            Row("Action") { Api.enCatalog("top", 0, "Action") },
+            Row("Comedy") { Api.enCatalog("top", 0, "Comedy") },
+            Row("Drama") { Api.enCatalog("top", 0, "Drama") },
+            Row("Sci-Fi") { Api.enCatalog("top", 0, "Sci-Fi") },
+            Row("Thriller") { Api.enCatalog("top", 0, "Thriller") },
+            Row("Animation") { Api.enCatalog("top", 0, "Animation") }
         )
-        for ((title, genre) in wanted) {
+        for (r in wanted) {
             try {
-                val movies = Api.enCatalog("top", 0, genre)
+                val movies = r.fetch()
                 if (movies.isEmpty()) continue
                 runOnUiThread {
-                    val row = addRow(title)
+                    if (isFinishing) return@runOnUiThread
+                    val row = addRow(r.title)
                     row.list.adapter = MovieAdapter(movies)
                     row.view.visibility = View.VISIBLE
                 }

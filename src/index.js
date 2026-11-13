@@ -329,7 +329,7 @@ app.post("/pair/:code", async (req, res) => {
 const enCatalogHandler = async (req, res) => {
     try {
         const { catalog, genre } = req.params;
-        if (!/^[a-z-]+$/.test(catalog)) return res.status(400).json({ error: "bad catalog" });
+        if (!en.CINEMETA_CATALOGS.includes(catalog)) return res.status(400).json({ error: "bad catalog" });
         if (genre && !/^[A-Za-z -]+$/.test(genre)) return res.status(400).json({ error: "bad genre" });
         const out = await en.enCatalog(catalog, req.params.skip, genre);
         res.setHeader("Cache-Control", "public, max-age=3600");
@@ -338,9 +338,83 @@ const enCatalogHandler = async (req, res) => {
         res.status(502).json({ error: e.message });
     }
 };
+// "Just added" must come before /:catalog so it is not read as a catalog id
+app.get("/en/catalog/movie/latest", async (req, res) => {
+    try {
+        const out = await en.enLatestAdded();
+        res.setHeader("Cache-Control", "public, max-age=1800");
+        res.json(out);
+    } catch (e) {
+        res.status(502).json({ error: e.message });
+    }
+});
 app.get("/en/catalog/movie/:catalog", enCatalogHandler);
 app.get("/en/catalog/movie/:catalog/genre/:genre", enCatalogHandler);
 app.get("/en/catalog/movie/:catalog/:skip", enCatalogHandler);
+
+// ---------------------------------------------------------------------------
+// Search (TMDB-backed type-ahead), actor search, subtitles
+// ---------------------------------------------------------------------------
+const tmdb = require("./tmdb");
+
+app.get("/en/suggest/movie/:query", async (req, res) => {
+    try {
+        const out = await tmdb.suggestMovies(req.params.query);
+        res.setHeader("Cache-Control", "public, max-age=3600");
+        res.json({ suggestions: out });
+    } catch (e) {
+        res.status(502).json({ error: e.message });
+    }
+});
+
+// a picked suggestion -> the full Cinemeta meta (resolves tmdb id -> imdb id)
+app.get("/en/tmdb/movie/:tmdbId", async (req, res) => {
+    try {
+        const tmdbId = parseInt(req.params.tmdbId);
+        if (!(tmdbId > 0)) return res.status(400).json({ error: "bad id" });
+        const imdbId = await tmdb.imdbIdOf(tmdbId);
+        if (!imdbId) return res.status(404).json({ error: "no imdb id for this title" });
+        let meta = null;
+        try { meta = await en.enMeta(imdbId); } catch (e) { /* not in Cinemeta */ }
+        res.setHeader("Cache-Control", "public, max-age=86400");
+        res.json({ imdbId, meta });
+    } catch (e) {
+        res.status(502).json({ error: e.message });
+    }
+});
+
+app.get("/en/person/:query", async (req, res) => {
+    try {
+        const out = await tmdb.searchPeople(req.params.query);
+        res.setHeader("Cache-Control", "public, max-age=86400");
+        res.json({ people: out });
+    } catch (e) {
+        res.status(502).json({ error: e.message });
+    }
+});
+
+app.get("/en/person/:personId/movies", async (req, res) => {
+    try {
+        const id = parseInt(req.params.personId);
+        if (!(id > 0)) return res.status(400).json({ error: "bad id" });
+        const out = await tmdb.personMovies(id);
+        res.setHeader("Cache-Control", "public, max-age=86400");
+        res.json({ suggestions: out });
+    } catch (e) {
+        res.status(502).json({ error: e.message });
+    }
+});
+
+app.get("/en/subtitles/movie/:imdbId", async (req, res) => {
+    try {
+        if (!/^tt\d+$/.test(req.params.imdbId)) return res.status(400).json({ error: "bad id" });
+        const out = await en.enSubtitles(req.params.imdbId);
+        res.setHeader("Cache-Control", "public, max-age=21600");
+        res.json(out);
+    } catch (e) {
+        res.status(502).json({ error: e.message });
+    }
+});
 
 app.get("/en/search/movie/:query", async (req, res) => {
     try {
