@@ -25,6 +25,10 @@ import androidx.media3.ui.PlayerView
  */
 class PlayerActivity : Activity() {
 
+    companion object {
+        const val SEEK_STEP_MS = 10_000L
+    }
+
     private lateinit var player: ExoPlayer
     private lateinit var playerView: PlayerView
     private lateinit var sourceLabel: TextView     // top-left pill: what is playing
@@ -69,6 +73,10 @@ class PlayerActivity : Activity() {
         nextHint = findViewById(R.id.nextHint)
         ctlTitle = playerView.findViewById(R.id.ctlTitle)
         ctlSub = playerView.findViewById(R.id.ctlSub)
+        // D-pad scrubbing on the time bar defaults to duration/20 per press
+        // (~7 min on a 2 h episode). Fix it at 10 s.
+        playerView.findViewById<androidx.media3.ui.DefaultTimeBar>(androidx.media3.ui.R.id.exo_progress)
+            ?.setKeyTimeIncrement(SEEK_STEP_MS)
 
         videoId = intent.getStringExtra("videoId") ?: run { finish(); return }
         videoTitle = intent.getStringExtra("videoTitle") ?: ""
@@ -611,6 +619,35 @@ class PlayerActivity : Activity() {
             }
             playerView.postDelayed(this, 1000)
         }
+    }
+
+    private fun seekBy(deltaMs: Long) {
+        val dur = player.duration
+        val target = (player.currentPosition + deltaMs).coerceAtLeast(0)
+        player.seekTo(if (dur > 0) target.coerceAtMost(dur - 1000) else target)
+        playerView.showController()
+    }
+
+    /**
+     * ◀ ▶ seek 10 s immediately, even while the controls are hidden (the
+     * PlayerView would otherwise swallow the first press just to show them);
+     * the media FF/REW keys jump 30 s. Once the controls are up, the time bar
+     * handles ◀ ▶ itself in the same 10 s steps.
+     */
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.action == KeyEvent.ACTION_DOWN && nextCard.visibility != View.VISIBLE && streams.isNotEmpty()) {
+            when (event.keyCode) {
+                KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                    if (!playerView.isControllerFullyVisible) {
+                        seekBy(if (event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT) -SEEK_STEP_MS else SEEK_STEP_MS)
+                        return true
+                    }
+                }
+                KeyEvent.KEYCODE_MEDIA_REWIND -> { seekBy(-3 * SEEK_STEP_MS); return true }
+                KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> { seekBy(3 * SEEK_STEP_MS); return true }
+            }
+        }
+        return super.dispatchKeyEvent(event)
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
