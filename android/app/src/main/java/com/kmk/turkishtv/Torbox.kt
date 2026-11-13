@@ -46,17 +46,51 @@ object Torbox {
             .edit().putString("torbox_key", key.trim()).apply()
     }
 
+    /**
+     * TorBox allows 300 requests/minute (x-ratelimit-limit) and answers 429
+     * with a Retry-After once that is spent. The old client parsed every
+     * response body as JSON, so a 429 (or any HTML error page) threw, the
+     * caller swallowed it as "transient", retried, and finally reported
+     * "Torrent never appeared in your TorBox list" - which is what made
+     * EVERY English source fail at once. Now a 429 is recorded, every
+     * in-flight caller fails fast until it expires, and the reason is
+     * reported honestly.
+     */
+    @Volatile private var rateLimitedUntilMs = 0L
+
+    fun rateLimitSecondsLeft(): Long {
+        val left = rateLimitedUntilMs - System.currentTimeMillis()
+        return if (left > 0) (left + 999) / 1000 else 0
+    }
+
     private fun call(url: String, key: String, post: okhttp3.RequestBody? = null): JSONObject {
+        val waitS = rateLimitSecondsLeft()
+        if (waitS > 0) return JSONObject().put("success", false)
+            .put("error", "RATE_LIMITED").put("detail", "TorBox rate limit - retry in ${waitS}s")
+
         val req = Request.Builder()
             .url(url)
             .header("Authorization", "Bearer $key")
             .apply { if (post != null) post(post) else get() }
             .build()
         http.newCall(req).execute().use { resp ->
+            if (resp.code == 429) {
+                val retryAfter = resp.header("retry-after")?.toLongOrNull() ?: 61L
+                rateLimitedUntilMs = System.currentTimeMillis() + retryAfter * 1000
+                return JSONObject().put("success", false)
+                    .put("error", "RATE_LIMITED").put("detail", "TorBox rate limit - retry in ${retryAfter}s")
+            }
             val body = resp.body?.string() ?: "{}"
-            return try { JSONObject(body) } catch (e: Exception) { JSONObject().put("success", false).put("error", "HTTP ${resp.code}") }
+            return try {
+                JSONObject(body)
+            } catch (e: Exception) {
+                JSONObject().put("success", false).put("error", "HTTP ${resp.code}")
+                    .put("detail", body.take(120).replace(Regex("<[^>]*>"), " ").trim())
+            }
         }
     }
+
+    private fun isRateLimited(j: JSONObject) = j.optString("error") == "RATE_LIMITED"
 
     private fun postJson(path: String, key: String, body: JSONObject): JSONObject =
         call("$BASE$path", key, body.toString().toRequestBody(JSON))
@@ -112,10 +146,10 @@ object Torbox {
         val t2 = Thread {
             library = try {
                 val out = HashSet<String>()
-                for (t in listTorrents(key, bypassCache = false)) {
+                for (t in fullList(key)) {
                     val h = t.optString("hash", "")
                     // only torrents that actually finished count as instant
-                    if (h.isNotBlank() && (t.optBoolean("download_finished") || t.optBoolean("cached"))) out.add(h.lowercase())
+                    if (h.isNotBlank() && isFinished(t)) out.add(h.lowercase())
                 }
                 out
             } catch (e: Exception) { emptySet() }
@@ -153,13 +187,23 @@ object Torbox {
 
     // ------------------------------------------------------------ account list
 
-    /** every torrent in the account (mylist); data may be an array or, with ?id=, a single object */
+    /**
+     * every torrent in the account (mylist); data may be an array or, with
+     * ?id=, a single object.
+     *
+     * The full list is ~430 KB on a well-used account (121 torrents with
+     * file lists); fetching one torrent by id is ~2 KB. Resolve and progress
+     * always pass an id, and the one place that needs the whole list caches
+     * it briefly, so a stream of retries can no longer spend the rate limit.
+     */
     private fun listTorrents(key: String, bypassCache: Boolean, id: Long = -1L): List<JSONObject> {
         val url = StringBuilder("$BASE/torrents/mylist?limit=1000")
         if (bypassCache) url.append("&bypass_cache=true")
         if (id > 0) url.append("&id=").append(id)
         val j = call(url.toString(), key)
-        if (!j.optBoolean("success")) throw RuntimeException(j.optString("error", j.optString("detail", "list unreadable")))
+        if (!j.optBoolean("success")) {
+            throw RuntimeException(j.optString("detail", "").ifEmpty { j.optString("error", "list unreadable") })
+        }
         val out = ArrayList<JSONObject>()
         when (val data = j.opt("data")) {
             is JSONArray -> for (i in 0 until data.length()) data.optJSONObject(i)?.let { out.add(it) }
@@ -167,6 +211,21 @@ object Torbox {
         }
         return out
     }
+
+    private var fullListCache: List<JSONObject> = emptyList()
+    private var fullListCacheAt = 0L
+    private const val FULL_LIST_TTL_MS = 60_000L
+
+    @Synchronized
+    private fun fullList(key: String): List<JSONObject> {
+        if (System.currentTimeMillis() - fullListCacheAt < FULL_LIST_TTL_MS && fullListCache.isNotEmpty()) return fullListCache
+        val list = listTorrents(key, bypassCache = true)
+        fullListCache = list
+        fullListCacheAt = System.currentTimeMillis()
+        return list
+    }
+
+    private fun invalidateList() { fullListCacheAt = 0L }
 
     private fun isFinished(t: JSONObject): Boolean =
         t.optBoolean("download_finished") || t.optBoolean("cached") || t.optDouble("progress", 0.0) >= 1.0 ||
@@ -189,7 +248,7 @@ object Torbox {
     /** how busy the account is: unfinished downloads hold the plan's active slots */
     fun accountState(key: String): AccountState {
         return try {
-            val list = listTorrents(key, bypassCache = true)
+            val list = fullList(key)
             val unfinished = list.filter { !isFinished(it) }
             AccountState(list.size, unfinished.size, unfinished.count { ageMinutes(it) >= STALE_DOWNLOAD_MIN })
         } catch (e: Exception) { AccountState(-1, -1, -1) }
@@ -206,7 +265,8 @@ object Torbox {
     /** Delete every torrent in the account (the ops-doc cleanup, one tap). Returns a human message. */
     fun deleteAll(key: String): String = try {
         val j = postJson("/torrents/controltorrent", key, JSONObject().put("operation", "delete").put("all", true))
-        if (j.optBoolean("success")) "TorBox cleaned up" else "TorBox refused: ${j.optString("error", j.optString("detail", "?"))}"
+        invalidateList()
+        if (j.optBoolean("success")) "TorBox cleaned up" else "TorBox refused: ${j.optString("detail", j.optString("error", "?"))}"
     } catch (e: Exception) { "error: ${e.message}" }
 
     /**
@@ -216,7 +276,8 @@ object Torbox {
     fun pruneStale(key: String, keepHash: String = ""): Int {
         return try {
             var n = 0
-            for (t in listTorrents(key, bypassCache = true)) {
+            invalidateList()
+            for (t in fullList(key)) {
                 if (isFinished(t)) continue
                 if (t.optString("hash", "").equals(keepHash, ignoreCase = true)) continue
                 if (ageMinutes(t) < STALE_DOWNLOAD_MIN) continue
@@ -242,6 +303,8 @@ object Torbox {
                 .addFormDataPart("seed", "2")
                 .build()
             val create = call("$BASE/torrents/createtorrent", key, body)
+            if (isRateLimited(create)) return Created(-1L, -1L, create.optString("detail"))
+            invalidateList()
             val d = create.optJSONObject("data")
             val torrentId = d?.optLong("torrent_id", -1L) ?: -1L
             val queuedId = d?.optLong("queued_id", -1L) ?: -1L
@@ -267,8 +330,10 @@ object Torbox {
      * frees up. Returns the torrent's list entry, or null with a reason.
      */
     private fun ensureListed(key: String, hash: String, name: String, needFiles: Boolean): Pair<JSONObject?, String> {
+        rateLimitSecondsLeft().let { if (it > 0) return Pair(null, "TorBox is rate-limiting this TV - wait ${it}s and try again") }
+
         val created = createTorrent(key, hash, name)
-        var queuedId = created.queuedId
+        val queuedId = created.queuedId
         var pruned = -1
         if (created.torrentId <= 0 && queuedId >= 0) {
             // At the plan's active-download limit: TorBox queued us. Free slots.
@@ -277,6 +342,7 @@ object Torbox {
 
         val attempts = if (queuedId >= 0) 14 else 8
         repeat(attempts) {
+            rateLimitSecondsLeft().let { if (it > 0) return Pair(null, "TorBox is rate-limiting this TV - wait ${it}s and try again") }
             try {
                 val t = findByHash(key, hash, created.torrentId)
                 if (t != null) {
@@ -284,7 +350,7 @@ object Torbox {
                     if (!needFiles || (files != null && files.length() > 0)) return Pair(t, "")
                 }
             } catch (e: Exception) {
-                return Pair(null, "TorBox list unreadable: ${e.message}")
+                return Pair(null, "TorBox: ${e.message}")
             }
             Thread.sleep(1500)
         }
@@ -297,7 +363,7 @@ object Torbox {
                 ". Settings → Clean up TorBox, then try again.")
         }
         return Pair(null, created.error?.let { "TorBox: $it" }
-            ?: "Torrent never appeared in your TorBox list (plan limit? Settings → Clean up TorBox)")
+            ?: "This source has no metadata on TorBox yet - try another one")
     }
 
     /**

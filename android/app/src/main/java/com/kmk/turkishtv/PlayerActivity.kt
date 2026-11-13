@@ -27,6 +27,8 @@ class PlayerActivity : Activity() {
 
     companion object {
         const val SEEK_STEP_MS = 10_000L
+        /** auto-fallback stops after this many failures; the user picks from the source list */
+        const val MAX_AUTO_FALLBACK = 5
     }
 
     private lateinit var player: ExoPlayer
@@ -242,8 +244,24 @@ class PlayerActivity : Activity() {
     private val failedSources = mutableSetOf<Int>()
 
     private fun tryNextSource(reason: String) {
-        Toast.makeText(this, "$reason - trying next source…", Toast.LENGTH_SHORT).show()
         failedSources.add(streamIndex)
+
+        // Never cascade through a long picker while TorBox is rate-limiting:
+        // each attempt costs several API calls, so auto-fallback would spend
+        // the whole 300/min budget and make every source fail.
+        val waitS = Torbox.rateLimitSecondsLeft()
+        if (waitS > 0) {
+            Toast.makeText(this, "TorBox is rate-limiting this TV - wait ${waitS}s, then pick a source",
+                Toast.LENGTH_LONG).show()
+            return
+        }
+        // Give up after a handful of failures rather than hammering the API
+        if (failedSources.size >= MAX_AUTO_FALLBACK) {
+            Toast.makeText(this, "$reason - $MAX_AUTO_FALLBACK sources failed; pick one from ◧ sources",
+                Toast.LENGTH_LONG).show()
+            return
+        }
+        Toast.makeText(this, "$reason - trying next source…", Toast.LENGTH_SHORT).show()
 
         // Codec-aware fallback: prefer the next UNTRIED source with a
         // different encode (HEVC/DV files often fail on some TVs while
