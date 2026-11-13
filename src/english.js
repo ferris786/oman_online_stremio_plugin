@@ -57,13 +57,14 @@ async function fetchJson(url, timeout = 15000) {
 
 // ---------- Cinemeta ----------
 
-async function enCatalog(catalog, skip) {
-    const key = `${catalog}:${skip || 0}`;
+async function enCatalog(catalog, skip, genre) {
+    const key = `${catalog}:${skip || 0}:${genre || ""}`;
     const cached = catalogCache.get(key);
     if (cached) return cached;
 
     let url = `${CATALOG_BASE}/${catalog}.json`;
-    if (skip) url = `${CATALOG_BASE}/${catalog}/skip=${parseInt(skip) || 0}.json`;
+    if (genre) url = `${CATALOG_BASE}/${catalog}/genre=${encodeURIComponent(genre)}.json`;
+    else if (skip) url = `${CATALOG_BASE}/${catalog}/skip=${parseInt(skip) || 0}.json`;
     const data = await fetchJson(url);
     const value = { metas: (data && data.metas) || [] };
     catalogCache.set(key, value);

@@ -4,6 +4,7 @@ import android.app.Activity
 import android.os.Bundle
 import android.view.KeyEvent
 import android.view.View
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
@@ -16,12 +17,24 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.ui.PlayerView
 
+/**
+ * Player with a custom controller (title, time remaining, gold scrubber,
+ * key hints), top pills for what is playing and which source, and a
+ * next-episode card that pre-resolves the next episode's streams and plays
+ * it when this one ends (OK plays it now, BACK keeps watching).
+ */
 class PlayerActivity : Activity() {
 
     private lateinit var player: ExoPlayer
     private lateinit var playerView: PlayerView
-    private lateinit var sourceLabel: TextView
-    private lateinit var sourcePill: TextView
+    private lateinit var sourceLabel: TextView     // top-left pill: what is playing
+    private lateinit var sourcePill: TextView      // top-right pill: source browser
+    private lateinit var nextCard: LinearLayout
+    private lateinit var nextThumb: ImageView
+    private lateinit var nextTitle: TextView
+    private lateinit var nextHint: TextView
+    private var ctlTitle: TextView? = null
+    private var ctlSub: TextView? = null
 
     data class PStream(val name: String, val title: String, val url: String,
                         val hash: String = "", val dn: String = "",
@@ -29,9 +42,19 @@ class PlayerActivity : Activity() {
     private var streams: List<PStream> = emptyList()
     private var streamIndex = 0
     private var videoId: String = ""
+    private var videoTitle: String = ""
+    private var seriesId: String? = null
 
     // Set once the first frame renders - after that, errors trigger fallback
     private var playbackStarted = false
+
+    // next-episode handoff
+    private var nextEpisode: Api.Episode? = null
+    private var allEpisodes: List<Api.Episode> = emptyList()
+    private var nextPrefetched = false
+    private var nextCancelled = false
+    private var nextShown = false
+    private var ended = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -40,11 +63,22 @@ class PlayerActivity : Activity() {
         playerView = findViewById(R.id.playerView)
         sourceLabel = findViewById(R.id.sourceLabel)
         sourcePill = findViewById(R.id.sourceChips)
+        nextCard = findViewById(R.id.nextCard)
+        nextThumb = findViewById(R.id.nextThumb)
+        nextTitle = findViewById(R.id.nextTitle)
+        nextHint = findViewById(R.id.nextHint)
+        ctlTitle = playerView.findViewById(R.id.ctlTitle)
+        ctlSub = playerView.findViewById(R.id.ctlSub)
+
         videoId = intent.getStringExtra("videoId") ?: run { finish(); return }
+        videoTitle = intent.getStringExtra("videoTitle") ?: ""
+        seriesId = intent.getStringExtra("seriesId")
 
         player = buildPlayer()
         playerView.player = player
-        setupSourceBarVisibility()
+        setupOverlayVisibility()
+        applyTitles()
+        nextCard.setOnClickListener { playNext() }
 
         // Pre-resolved streams (English movies resolved through TorBox) are
         // passed directly instead of hitting the addon /stream endpoint.
@@ -71,6 +105,7 @@ class PlayerActivity : Activity() {
                 val apiStreams = Api.streams(videoId)
                 val s = apiStreams.map { PStream(it.name, it.title, it.url) }
                 runOnUiThread {
+                    if (isFinishing) return@runOnUiThread
                     if (s.isEmpty()) {
                         Toast.makeText(this, "No streams available for this episode", Toast.LENGTH_LONG).show()
                         finish()
@@ -83,23 +118,35 @@ class PlayerActivity : Activity() {
                 }
             } catch (e: Exception) {
                 runOnUiThread {
+                    if (isFinishing) return@runOnUiThread
                     Toast.makeText(this, "Could not load streams: ${e.message}", Toast.LENGTH_LONG).show()
                     finish()
                 }
             }
         }.start()
+
+        loadNextEpisode()
+    }
+
+    private fun applyTitles() {
+        val series = intent.getStringExtra("seriesName")
+        val season = intent.getIntExtra("season", 0)
+        val episode = intent.getIntExtra("episode", 0)
+        sourceLabel.text = videoTitle.ifEmpty { series ?: "" }
+        if (series != null && season > 0) {
+            ctlTitle?.text = "Episode ${videoId.substringAfterLast("episode-", "$episode")}"
+            ctlSub?.text = "$series  ·  Season $season"
+        } else {
+            ctlTitle?.text = videoTitle
+            ctlSub?.text = ""
+        }
     }
 
     private fun buildPlayer(): ExoPlayer {
         // Generous buffers for flaky streaming CDNs: keep 30s minimum / 2 min
         // maximum buffered, start after 3s (5s after a stall).
         val loadControl = androidx.media3.exoplayer.DefaultLoadControl.Builder()
-            .setBufferDurationsMs(
-                30_000,          // minBufferMs
-                120_000,         // maxBufferMs
-                3_000,           // bufferForPlaybackMs
-                5_000            // bufferForPlaybackAfterRebufferMs
-            )
+            .setBufferDurationsMs(30_000, 120_000, 3_000, 5_000)
             .build()
 
         val httpFactory = DefaultHttpDataSource.Factory()
@@ -117,6 +164,10 @@ class PlayerActivity : Activity() {
                 p.addListener(object : Player.Listener {
                     override fun onPlaybackStateChanged(state: Int) {
                         if (state == Player.STATE_READY) playbackStarted = true
+                        if (state == Player.STATE_ENDED && !ended) {
+                            ended = true
+                            onEnded()
+                        }
                     }
 
                     override fun onPlayerError(error: PlaybackException) {
@@ -145,6 +196,13 @@ class PlayerActivity : Activity() {
         }
     }
 
+    /** saved position, unless the episode was already finished (then start over) */
+    private fun resumePosition(): Long {
+        val h = WatchState.history(this).firstOrNull { it.videoId == videoId }
+        if (h != null && h.isFinished) return 0L
+        return WatchState.getPosition(this, videoId)
+    }
+
     private fun playCurrent(resumeMs: Long = -1L) {
         if (streamIndex >= streams.size) {
             Toast.makeText(this, "All sources failed", Toast.LENGTH_LONG).show()
@@ -153,7 +211,7 @@ class PlayerActivity : Activity() {
         }
         val s = streams[streamIndex]
         playbackStarted = false
-        sourceLabel.text = "${streamIndex + 1}/${streams.size} · ${s.name}"
+        updateSourcePill()
         if (isYouTube(s.url)) {
             launchYouTube(s.url)
             playbackStarted = true // don't let auto-fallback fire the intent
@@ -165,7 +223,7 @@ class PlayerActivity : Activity() {
         }
         player.setMediaItem(MediaItem.fromUri(s.url))
         player.prepare()
-        val pos = if (resumeMs >= 0) resumeMs else WatchState.getPosition(this, videoId)
+        val pos = if (resumeMs >= 0) resumeMs else resumePosition()
         if (pos > Config.RESUME_THRESHOLD_MS && pos < 4 * 60 * 60 * 1000) {
             player.seekTo(pos)
             Toast.makeText(this, "Resuming", Toast.LENGTH_SHORT).show()
@@ -211,8 +269,9 @@ class PlayerActivity : Activity() {
         Thread {
             val result = Torbox.resolveStream(key, s.hash, s.dn.ifEmpty { s.name })
             runOnUiThread {
+                if (isFinishing) return@runOnUiThread
                 if (result.startsWith("http")) {
-                    val pos = if (seekTo >= 0) seekTo else -1L
+                    val pos = if (seekTo >= 0) seekTo else resumePosition()
                     playbackStarted = false
                     player.setMediaItem(MediaItem.fromUri(result))
                     player.prepare()
@@ -243,6 +302,7 @@ class PlayerActivity : Activity() {
             val torrentId = Torbox.startDownload(key, s.hash, s.dn.ifEmpty { s.name })
             if (torrentId <= 0) {
                 runOnUiThread {
+                    if (isFinishing) return@runOnUiThread
                     Toast.makeText(this, "Could not start download (plan limit reached?)", Toast.LENGTH_LONG).show()
                     failedSources.add(streamIndex)
                     tryNextSource("download start failed")
@@ -258,11 +318,12 @@ class PlayerActivity : Activity() {
                 .setCancelable(true)
                 .create()
             var cancelled = false
-            runOnUiThread { dialog.show() }
+            dialog.setOnDismissListener { cancelled = true }
+            runOnUiThread { if (!isFinishing) dialog.show() }
 
             val start = System.currentTimeMillis()
             var earlyAttempts = 0
-            while (!cancelled && System.currentTimeMillis() - start < 30 * 60 * 1000) {
+            while (!cancelled && !isFinishing && System.currentTimeMillis() - start < 30 * 60 * 1000) {
                 val p = Torbox.downloadProgress(key, torrentId)
                 // After the first ~10s, try resolving early every ~12s even
                 // before completion - TorBox often serves the file while it
@@ -274,6 +335,7 @@ class PlayerActivity : Activity() {
                     val link = Torbox.resolveStream(key, s.hash, s.dn.ifEmpty { s.name })
                     if (link.startsWith("http")) {
                         runOnUiThread {
+                            if (isFinishing) return@runOnUiThread
                             dialog.dismiss()
                             playbackStarted = false
                             player.setMediaItem(MediaItem.fromUri(link))
@@ -284,6 +346,7 @@ class PlayerActivity : Activity() {
                     }
                     if (p.ready) {
                         runOnUiThread {
+                            if (isFinishing) return@runOnUiThread
                             dialog.dismiss()
                             Toast.makeText(this, link, Toast.LENGTH_LONG).show()
                         }
@@ -299,7 +362,7 @@ class PlayerActivity : Activity() {
                 }
                 Thread.sleep(2000)
             }
-            runOnUiThread { dialog.dismiss() }
+            runOnUiThread { if (dialog.isShowing) dialog.dismiss() }
         }.start()
     }
 
@@ -313,7 +376,6 @@ class PlayerActivity : Activity() {
         streamIndex = index
         playbackStarted = false
         val s = streams[streamIndex]
-        sourceLabel.text = "${streamIndex + 1}/${streams.size} · ${s.name}"
         updateSourcePill()
         if (isYouTube(s.url)) {
             launchYouTube(s.url)
@@ -333,24 +395,26 @@ class PlayerActivity : Activity() {
     }
 
     /**
-     * The source bar shows/hides together with the player controls so it never
-     * distracts from viewing. While a chip has focus it stays visible even if
-     * the controls time out underneath it, and hides once focus leaves.
+     * The top pills show and hide together with the player controls. While
+     * the source pill has focus it stays visible even if the controls time
+     * out underneath it, and hides once focus leaves.
      */
-    private fun setupSourceBarVisibility() {
-        val bar = findViewById<View>(R.id.sourceChips)
-        bar.setOnFocusChangeListener { _, hasFocus ->
+    private fun setupOverlayVisibility() {
+        sourcePill.setOnFocusChangeListener { _, hasFocus ->
             if (!hasFocus && !playerView.isControllerFullyVisible) {
-                bar.visibility = View.GONE
+                sourcePill.visibility = View.GONE
+                sourceLabel.visibility = View.GONE
             }
         }
         playerView.setControllerVisibilityListener(
-            object : androidx.media3.ui.PlayerView.ControllerVisibilityListener {
+            object : PlayerView.ControllerVisibilityListener {
                 override fun onVisibilityChanged(visibility: Int) {
                     if (visibility == View.VISIBLE) {
-                        bar.visibility = View.VISIBLE
-                    } else if (!bar.hasFocus()) {
-                        bar.visibility = View.GONE
+                        sourcePill.visibility = View.VISIBLE
+                        sourceLabel.visibility = if (sourceLabel.text.isNullOrEmpty()) View.GONE else View.VISIBLE
+                    } else if (!sourcePill.hasFocus()) {
+                        sourcePill.visibility = View.GONE
+                        sourceLabel.visibility = View.GONE
                     }
                 }
             }
@@ -364,6 +428,10 @@ class PlayerActivity : Activity() {
             val scale = if (hasFocus) 1.08f else 1f
             sourcePill.animate().scaleX(scale).scaleY(scale).setDuration(120).start()
             sourcePill.translationZ = if (hasFocus) 10f else 0f
+            if (!hasFocus && !playerView.isControllerFullyVisible) {
+                sourcePill.visibility = View.GONE
+                sourceLabel.visibility = View.GONE
+            }
         }
     }
 
@@ -375,7 +443,7 @@ class PlayerActivity : Activity() {
             cur.cached -> "⚡"
             else -> "⏳"
         }
-        sourcePill.text = "◧  ${streams.size} sources · ${cur.name} $badge"
+        sourcePill.text = "◧  ${streamIndex + 1}/${streams.size}  ·  ${cur.name}  $badge"
     }
 
     /**
@@ -456,6 +524,95 @@ class PlayerActivity : Activity() {
 
     private var dialog: android.app.AlertDialog? = null
 
+    // ------------------------------------------------------------ next episode
+
+    private fun loadNextEpisode() {
+        val sid = seriesId ?: return
+        if (videoId.startsWith("movie:")) return
+        Thread {
+            try {
+                val eps = Api.episodes(sid)
+                val idx = eps.indexOfFirst { it.id == videoId }
+                val next = if (idx >= 0) eps.getOrNull(idx + 1) else null
+                runOnUiThread {
+                    allEpisodes = eps
+                    nextEpisode = next?.takeIf { !it.isUnaired }
+                }
+            } catch (e: Exception) { /* no handoff this time */ }
+        }.start()
+    }
+
+    private fun showNextCard() {
+        val n = nextEpisode ?: return
+        nextShown = true
+        nextTitle.text = "Episode ${n.absNumber}"
+        Ui.loadImage(nextThumb, n.thumbnail ?: intent.getStringExtra("seriesBackdrop"), 3f)
+        nextCard.visibility = View.VISIBLE
+        nextCard.alpha = 0f
+        nextCard.animate().alpha(1f).setDuration(250).start()
+        // the card owns OK while it is up (the PlayerView would otherwise
+        // swallow DPAD_CENTER to show its controller)
+        nextCard.requestFocus()
+    }
+
+    private fun hideNextCard() {
+        nextCard.visibility = View.GONE
+    }
+
+    private fun onEnded() {
+        WatchState.savePosition(this, videoId, player.duration.coerceAtLeast(player.currentPosition))
+        WatchState.updateHistoryPosition(this, videoId, player.duration, player.duration)
+        if (nextEpisode != null && !nextCancelled) playNext() else finish()
+    }
+
+    private fun playNext() {
+        val n = nextEpisode ?: return
+        val series = intent.getStringExtra("seriesName") ?: ""
+        if (player.duration > 0) {
+            WatchState.savePosition(this, videoId, player.currentPosition)
+            WatchState.updateHistoryPosition(this, videoId, player.currentPosition, player.duration)
+        }
+        WatchState.upsertHistory(this, WatchState.HistoryEntry(
+            seriesId ?: "", series, intent.getStringExtra("seriesPoster"), n.id, n.title, n.season, n.episode,
+            0, 0, System.currentTimeMillis(), thumb = n.thumbnail, backdrop = intent.getStringExtra("seriesBackdrop")))
+        val i = android.content.Intent(this, PlayerActivity::class.java)
+            .putExtras(intent)
+            .putExtra("videoId", n.id)
+            .putExtra("videoTitle", "$series · S${n.season}E${n.episode}")
+            .putExtra("season", n.season)
+            .putExtra("episode", n.episode)
+        ended = true
+        startActivity(i)
+        finish()
+    }
+
+    /** one-second tick: time remaining in the controller, next-up card, prefetch */
+    private val tick = object : Runnable {
+        override fun run() {
+            val dur = player.duration
+            val pos = player.currentPosition
+            if (dur > 0) {
+                val remaining = dur - pos
+                val series = intent.getStringExtra("seriesName")
+                val season = intent.getIntExtra("season", 0)
+                ctlSub?.text = listOfNotNull(series, season.takeIf { it > 0 }?.let { "Season $it" },
+                    "${(remaining / 60000).coerceAtLeast(0)} min left").joinToString("  ·  ")
+                if (nextEpisode != null && playbackStarted) {
+                    if (!nextPrefetched && remaining <= 180_000) {
+                        nextPrefetched = true
+                        val id = nextEpisode!!.id
+                        Thread { try { Api.streams(id) } catch (e: Exception) { } }.start()
+                    }
+                    if (!nextShown && !nextCancelled && remaining <= 60_000) showNextCard()
+                    if (nextCard.visibility == View.VISIBLE) {
+                        nextHint.text = "Starts in ${Ui.msLabel(remaining)}  ·  OK plays now  ·  BACK keeps watching"
+                    }
+                }
+            }
+            playerView.postDelayed(this, 1000)
+        }
+    }
+
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         // Number keys 1-9 jump straight to a source
         if (keyCode in KeyEvent.KEYCODE_1..KeyEvent.KEYCODE_9) {
@@ -465,10 +622,20 @@ class PlayerActivity : Activity() {
                 return true
             }
         }
+        if (nextCard.visibility == View.VISIBLE) {
+            when (keyCode) {
+                KeyEvent.KEYCODE_BACK -> { nextCancelled = true; hideNextCard(); return true }
+                KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> { playNext(); return true }
+            }
+        }
         return when (keyCode) {
             KeyEvent.KEYCODE_CHANNEL_UP -> { cycleSource(1); true }
             KeyEvent.KEYCODE_CHANNEL_DOWN -> { cycleSource(-1); true }
             KeyEvent.KEYCODE_MENU -> { showSourceBrowser(); true }
+            // reached only when the controller is showing and nothing sits
+            // above the focused control (a hidden controller consumes ▲ to
+            // show itself first)
+            KeyEvent.KEYCODE_DPAD_UP -> { showSourceBrowser(); true }
             else -> super.onKeyDown(keyCode, event)
         }
     }
@@ -487,12 +654,16 @@ class PlayerActivity : Activity() {
     override fun onStart() {
         super.onStart()
         playerView.postDelayed(saveRunnable, 10_000)
+        playerView.postDelayed(tick, 1000)
     }
 
     override fun onStop() {
-        WatchState.savePosition(this, videoId, player.currentPosition)
-        WatchState.updateHistoryPosition(this, videoId, player.currentPosition, player.duration)
+        if (!ended && player.currentPosition > 0) {
+            WatchState.savePosition(this, videoId, player.currentPosition)
+            WatchState.updateHistoryPosition(this, videoId, player.currentPosition, player.duration)
+        }
         playerView.removeCallbacks(saveRunnable)
+        playerView.removeCallbacks(tick)
         player.pause()
         super.onStop()
     }

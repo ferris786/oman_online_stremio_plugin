@@ -1,230 +1,207 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Home: full-bleed backdrop, left rail, billboard, then horizontal rows
+     that scroll up over the billboard (Netflix grammar). -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@drawable/bg_gradient">
+    android:background="@color/bg">
 
-    <LinearLayout
-        android:id="@+id/turkishPane"
+    <ImageView
+        android:id="@+id/backdrop"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
+        android:scaleType="centerCrop"
+        android:contentDescription="@string/app_name" />
+
+    <View android:layout_width="match_parent" android:layout_height="match_parent" android:background="@drawable/scrim_left" />
+    <View android:layout_width="match_parent" android:layout_height="match_parent" android:background="@drawable/scrim_bottom" />
+
+    <!-- Billboard -->
+    <LinearLayout
+        android:id="@+id/billboard"
+        android:layout_width="560dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="92dp"
+        android:layout_marginTop="32dp"
         android:orientation="vertical">
 
-        <LinearLayout
+        <TextView
+            android:id="@+id/bbChip"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="@drawable/chip_new"
+            android:paddingStart="8dp" android:paddingEnd="8dp"
+            android:paddingTop="3dp" android:paddingBottom="3dp"
+            android:textColor="@color/white"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:letterSpacing="0.1"
+            android:visibility="gone" />
+
+        <ImageView
+            android:id="@+id/bbLogo"
+            android:layout_width="320dp"
+            android:layout_height="96dp"
+            android:layout_marginTop="8dp"
+            android:scaleType="fitStart"
+            android:visibility="gone"
+            android:contentDescription="@string/app_name" />
+
+        <TextView
+            android:id="@+id/bbTitle"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:paddingStart="28dp"
-            android:paddingEnd="28dp"
-            android:paddingTop="22dp">
+            android:layout_marginTop="8dp"
+            android:fontFamily="@font/cinzel_bold"
+            android:textColor="@color/title_cream"
+            android:textSize="42sp"
+            android:lineSpacingMultiplier="0.95"
+            android:maxLines="2"
+            android:ellipsize="end"
+            android:shadowColor="#cc000000"
+            android:shadowRadius="18" />
 
-            <View
-                android:layout_width="6dp"
-                android:layout_height="34dp"
-                android:background="@color/accent" />
+        <TextView
+            android:id="@+id/bbMeta"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:textColor="@color/text_soft"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:shadowColor="#cc000000"
+            android:shadowRadius="8" />
+
+        <TextView
+            android:id="@+id/bbSynopsis"
+            android:layout_width="440dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:textColor="@color/text_soft"
+            android:textSize="13sp"
+            android:lineSpacingExtra="2dp"
+            android:maxLines="2"
+            android:ellipsize="end"
+            android:shadowColor="#cc000000"
+            android:shadowRadius="8" />
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:orientation="horizontal">
 
             <TextView
+                android:id="@+id/bbPrimary"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="14dp"
-                android:text="@string/app_name"
-                android:textColor="@color/text"
-                android:textSize="30sp"
-                android:textStyle="bold"
-                android:letterSpacing="0.04" />
-
-            <TextView
-                android:id="@+id/tabTurkish"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="24dp"
-                android:background="@drawable/row_selector"
+                android:background="@drawable/btn_primary"
                 android:focusable="true"
                 android:clickable="true"
-                android:paddingStart="16dp"
-                android:paddingEnd="16dp"
-                android:paddingTop="8dp"
-                android:paddingBottom="8dp"
-                android:text="TURKISH"
-                android:textColor="@color/accent"
+                android:paddingStart="22dp" android:paddingEnd="22dp"
+                android:paddingTop="10dp" android:paddingBottom="10dp"
+                android:text="▶  Play"
+                android:textColor="@color/btn_primary_text"
                 android:textSize="15sp"
-                android:letterSpacing="0.12"
                 android:textStyle="bold" />
 
             <TextView
-                android:id="@+id/tabEnglish"
+                android:id="@+id/bbSecondary"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="10dp"
-                android:background="@drawable/row_selector"
+                android:background="@drawable/btn_primary"
                 android:focusable="true"
                 android:clickable="true"
-                android:paddingStart="16dp"
-                android:paddingEnd="16dp"
-                android:paddingTop="8dp"
-                android:paddingBottom="8dp"
-                android:text="ENGLISH"
-                android:textColor="@color/text_dim"
+                android:paddingStart="22dp" android:paddingEnd="22dp"
+                android:paddingTop="10dp" android:paddingBottom="10dp"
+                android:text="ⓘ  Episodes"
+                android:textColor="@color/btn_primary_text"
                 android:textSize="15sp"
-                android:letterSpacing="0.12"
                 android:textStyle="bold" />
-
-            <Space
-                android:layout_width="0dp"
-                android:layout_height="1dp"
-                android:layout_weight="1" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/app_author"
-                android:textColor="@color/text_dim"
-                android:textSize="14sp" />
-
-            <TextView
-                android:id="@+id/settingsBtn"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="18dp"
-                android:background="@drawable/row_selector"
-                android:focusable="true"
-                android:clickable="true"
-                android:padding="10dp"
-                android:text="⚙"
-                android:textColor="@color/text"
-                android:textSize="20sp" />
         </LinearLayout>
-
-        <TextView
-            android:id="@+id/continueHeader"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:paddingStart="28dp"
-            android:paddingTop="14dp"
-            android:text="Continue Watching"
-            android:textColor="@color/text"
-            android:textSize="18sp"
-            android:textStyle="bold"
-            android:visibility="gone" />
-
-        <androidx.recyclerview.widget.RecyclerView
-            android:id="@+id/continueRow"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:clipToPadding="false"
-            android:paddingStart="24dp"
-            android:paddingEnd="24dp"
-            android:visibility="gone" />
-
-        <!-- Slim bar shown while the Continue row is collapsed (browsing series) -->
-        <TextView
-            android:id="@+id/continueBar"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="28dp"
-            android:layout_marginTop="6dp"
-            android:background="@drawable/row_selector"
-            android:focusable="true"
-            android:clickable="true"
-            android:paddingStart="18dp"
-            android:paddingEnd="18dp"
-            android:paddingTop="8dp"
-            android:paddingBottom="8dp"
-            android:text="▸  Continue Watching"
-            android:textColor="@color/accent"
-            android:textSize="15sp"
-            android:visibility="gone" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:paddingStart="28dp"
-            android:paddingTop="18dp"
-            android:text="All Series"
-            android:textColor="@color/text"
-            android:textSize="18sp"
-            android:textStyle="bold" />
-
-        <androidx.recyclerview.widget.RecyclerView
-            android:id="@+id/grid"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:layout_marginTop="6dp"
-            android:clipToPadding="false"
-            android:paddingStart="20dp"
-            android:paddingEnd="20dp"
-            android:paddingBottom="16dp" />
     </LinearLayout>
 
-    <!-- English movies pane (kept fully separate from the Turkish content) -->
-    <LinearLayout
-        android:id="@+id/englishPane"
+    <!-- Rows -->
+    <com.kmk.turkishtv.SnapScrollView
+        android:id="@+id/rowsScroll"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:orientation="vertical"
-        android:visibility="gone">
+        android:clipToPadding="false"
+        android:paddingTop="296dp"
+        android:paddingBottom="200dp"
+        android:overScrollMode="never"
+        android:focusable="false"
+        android:scrollbars="none">
 
         <LinearLayout
+            android:id="@+id/rowsContainer"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:paddingStart="28dp"
-            android:paddingEnd="28dp"
-            android:paddingTop="22dp">
+            android:orientation="vertical" />
+    </com.kmk.turkishtv.SnapScrollView>
 
-            <View
-                android:layout_width="6dp"
-                android:layout_height="34dp"
-                android:background="@color/accent" />
+    <!-- Left rail -->
+    <LinearLayout
+        android:id="@+id/rail"
+        android:layout_width="64dp"
+        android:layout_height="match_parent"
+        android:gravity="center_horizontal"
+        android:orientation="vertical"
+        android:paddingTop="22dp">
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="14dp"
-                android:text="Movies"
-                android:textColor="@color/text"
-                android:textSize="30sp"
-                android:textStyle="bold"
-                android:letterSpacing="0.04" />
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:fontFamily="@font/cinzel_bold"
+            android:text="W"
+            android:textColor="@color/accent"
+            android:textSize="24sp"
+            android:layout_marginBottom="14dp" />
 
-            <TextView
-                android:id="@+id/enSearchBtn"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="24dp"
-                android:background="@drawable/row_selector"
-                android:focusable="true"
-                android:clickable="true"
-                android:paddingStart="18dp"
-                android:paddingEnd="18dp"
-                android:paddingTop="10dp"
-                android:paddingBottom="10dp"
-                android:text="🔍  Search"
-                android:textColor="@color/accent"
-                android:textSize="15sp" />
+        <TextView
+            android:id="@+id/railHome"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:layout_marginTop="8dp"
+            android:background="@drawable/rail_item"
+            android:focusable="true"
+            android:clickable="true"
+            android:gravity="center"
+            android:text="⌂"
+            android:textColor="@color/rail_icon_text"
+            android:textSize="20sp" />
 
-            <Space
-                android:layout_width="0dp"
-                android:layout_height="1dp"
-                android:layout_weight="1" />
-        </LinearLayout>
+        <TextView
+            android:id="@+id/railSearch"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:layout_marginTop="8dp"
+            android:background="@drawable/rail_item"
+            android:focusable="true"
+            android:clickable="true"
+            android:gravity="center"
+            android:text="⌕"
+            android:textColor="@color/rail_icon_text"
+            android:textSize="22sp" />
 
-        <androidx.recyclerview.widget.RecyclerView
-            android:id="@+id/enGrid"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:layout_marginTop="10dp"
-            android:clipToPadding="false"
-            android:paddingStart="20dp"
-            android:paddingEnd="20dp"
-            android:paddingBottom="16dp" />
+        <TextView
+            android:id="@+id/railSettings"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:layout_marginTop="8dp"
+            android:background="@drawable/rail_item"
+            android:focusable="true"
+            android:clickable="true"
+            android:gravity="center"
+            android:text="⚙"
+            android:textColor="@color/rail_icon_text"
+            android:textSize="20sp" />
     </LinearLayout>
 
     <!-- Cinematic splash: full-bleed artwork (carries the WAHAB TV title),
-         slow Ken Burns zoom, caption in the open sky at top-right -->
+         slow Ken Burns zoom, caption in the open sky at top-right; dissolves
+         into the billboard -->
     <FrameLayout
         android:id="@+id/splash"
         android:layout_width="match_parent"

@@ -19,14 +19,19 @@ Apps → Turkish TV → Uninstall first if you want a clean reinstall.
 
 Alternative install: `adb connect <TV-IP>:5555 && adb install -r turkishtv.apk`
 
-## Using the app
+## Using the app (v5 UI)
 
-- **D-pad** navigates everything; **OK** selects
-- Series grid → season tabs → episode list → player
-- **Channel + / Channel –** keys switch stream sources (also switches
-  automatically when a source fails)
-- Positions are remembered per episode (✓ = started), with a
-  **Continue** button on the home screen
+- **D-pad** navigates everything; **OK** selects; **left** from any row reaches
+  the rail (Home / Search / Settings)
+- Home: billboard follows whatever is focused; rows for Continue Watching,
+  New this week, Turkish Series and movie genres
+- Series page: Resume lands on the next episode to watch; the Season button
+  opens a menu; episode cards show stills, runtime, overview and state
+- Player: OK pause, ◀ ▶ seek, ▲ or MENU opens the source browser,
+  **Channel + / Channel –** switch sources (also automatic when a source
+  fails). A next-episode card appears in the last minute: OK plays it now,
+  BACK keeps watching, and it auto-plays when the episode ends
+- Movies: Play takes the best instant source; Choose source opens the sheet
 
 ## Building
 
@@ -47,7 +52,14 @@ tab if you don't want a local toolchain.
 ## Layout
 
 - `app/src/main/java/com/kmk/turkishtv/Config.kt` — addon base URL
-- `Api.kt` — catalog/meta/stream client
-- `SeriesActivity` → `EpisodesActivity` → `PlayerActivity` (Media3 ExoPlayer,
-  30–120s buffers, source auto-fallback, resume)
-- `WatchState.kt` — playback positions + last watched
+- `Api.kt` — catalog/meta/stream client (TMDB-enriched fields are optional,
+  so the app also works against an older server)
+- `SeriesActivity` (home: billboard + rows) → `EpisodesActivity` (series
+  page) → `PlayerActivity` (Media3 ExoPlayer with the custom controller in
+  `res/layout/player_controls.xml`, 30–120s buffers, source auto-fallback,
+  resume, next-episode handoff)
+- `MovieDetailActivity` → `SourcePickerActivity` (grouped sheet) → player
+- `Ui.kt` — shared focus treatment, image loading, formatters;
+  `SnapScrollView` — row snapping on the home screen
+- `WatchState.kt` — playback positions + history (with artwork for the
+  Continue Watching stills)

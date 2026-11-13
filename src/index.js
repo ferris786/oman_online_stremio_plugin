@@ -12,7 +12,7 @@ const httpAgent = new http.Agent({ keepAlive: true, maxSockets: 64, keepAliveMse
 const httpsAgent = new https.Agent({ keepAlive: true, maxSockets: 64, keepAliveMsecs: 30000 });
 const { addonBuilder, getRouter } = require("stremio-addon-sdk");
 const manifest = require("./manifest");
-const { getSeries, getMeta } = require("./catalog");
+const { getSeries, getMeta, searchSeries } = require("./catalog");
 const { getStream } = require("./stream");
 const xs = require("./extractors/xtremestream");
 const en = require("./english");
@@ -31,7 +31,7 @@ const builder = new addonBuilder(manifest);
 builder.defineCatalogHandler(async ({ type, id, extra }) => {
     console.log("Catalog request:", type, id);
     if (type === "series" && id === "osmanonline_catalog") {
-        const metas = await getSeries();
+        const metas = extra && extra.search ? await searchSeries(extra.search) : await getSeries();
         return { metas: metas };
     }
     return { metas: [] };
@@ -328,9 +328,10 @@ app.post("/pair/:code", async (req, res) => {
 // ---------------------------------------------------------------------------
 const enCatalogHandler = async (req, res) => {
     try {
-        const { catalog } = req.params;
+        const { catalog, genre } = req.params;
         if (!/^[a-z-]+$/.test(catalog)) return res.status(400).json({ error: "bad catalog" });
-        const out = await en.enCatalog(catalog, req.params.skip);
+        if (genre && !/^[A-Za-z -]+$/.test(genre)) return res.status(400).json({ error: "bad genre" });
+        const out = await en.enCatalog(catalog, req.params.skip, genre);
         res.setHeader("Cache-Control", "public, max-age=3600");
         res.json(out);
     } catch (e) {
@@ -338,6 +339,7 @@ const enCatalogHandler = async (req, res) => {
     }
 };
 app.get("/en/catalog/movie/:catalog", enCatalogHandler);
+app.get("/en/catalog/movie/:catalog/genre/:genre", enCatalogHandler);
 app.get("/en/catalog/movie/:catalog/:skip", enCatalogHandler);
 
 app.get("/en/search/movie/:query", async (req, res) => {

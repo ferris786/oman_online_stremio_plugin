@@ -1,8 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="bg">#0e0e12</color>
+    <color name="bg_deep">#0a0a0d</color>
     <color name="card">#1c1c24</color>
+    <color name="surface">#16161d</color>
     <color name="accent">#e0b34d</color>
+    <color name="accent_dark">#1a1408</color>
     <color name="text">#f2f2f2</color>
     <color name="text_dim">#9a9aa2</color>
+    <color name="text_soft">#d8d3c8</color>
+    <color name="title_cream">#f7e9c6</color>
+    <color name="new_red">#d64b3a</color>
+    <color name="white">#ffffff</color>
+    <color name="focus_ring">#ffffff</color>
 </resources>

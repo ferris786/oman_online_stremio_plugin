@@ -8,24 +8,27 @@ import android.view.View
 import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
-import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.RecyclerView
-import coil.Coil
-import coil.request.ImageRequest
 import com.kmk.turkishtv.mux.MuxConfig
 import com.kmk.turkishtv.mux.MuxEngine
-import com.kmk.turkishtv.mux.QualityProfile
+import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * Movie detail + play flow:
- * candidates (addon) -> TorBox availability (in-app key) -> resolve cached
- * ones to direct links -> PlayerActivity with pre-resolved streams.
+ * Movie page: backdrop, title, rating / year / runtime / genres, synopsis.
+ * Play takes the best instant source straight to the player; Choose source
+ * opens the grouped source sheet. Candidates come from the mux engine
+ * (parallel providers -> batched TorBox cache check -> profile sort).
  */
 class MovieDetailActivity : Activity() {
 
     private var movie: Api.EnMovie? = null
     private var meta: JSONObject? = null
+    private var background: String? = null
+    private var busy = false
+
+    private lateinit var status: TextView
+    private lateinit var playBtn: TextView
+    private lateinit var sourcesBtn: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -38,53 +41,88 @@ class MovieDetailActivity : Activity() {
             intent.getStringExtra("poster"),
             intent.getStringExtra("year")
         )
+        background = intent.getStringExtra("background")
 
+        status = findViewById(R.id.mStatus)
+        playBtn = findViewById(R.id.mPlay)
+        sourcesBtn = findViewById(R.id.mSources)
         findViewById<TextView>(R.id.mTitle).text = movie?.name
         findViewById<TextView>(R.id.mYear).text = movie?.year ?: ""
-        movie?.poster?.let { load(it, findViewById(R.id.mPoster)) }
+        Ui.loadBackdrop(findViewById(R.id.mBackdrop), background ?: movie?.poster)
+
+        playBtn.setOnClickListener { findSources(pickBest = true) }
+        sourcesBtn.setOnClickListener { findSources(pickBest = false) }
+        playBtn.requestFocus()
+
+        val autoplay = intent.getBooleanExtra("autoplay", false)
 
         Thread {
             try {
                 val m = Api.enMeta(imdbId)
                 meta = m
-                runOnUiThread {
-                    findViewById<TextView>(R.id.mDesc).text = m.optString("description", "")
-                    findViewById<TextView>(R.id.mRuntime).text =
-                        if (m.optString("runtime", "").isNotEmpty()) m.optString("runtime") + " min" else ""
-                    m.optString("background").takeIf { it.isNotEmpty() }?.let {
-                        load(it, findViewById(R.id.mBackdrop))
-                    }
-                }
+                runOnUiThread { if (!isFinishing) renderMeta(m) }
+            } catch (e: Exception) { /* detail text stays as passed in */ }
 
-                // AIOStreams preloadStreams trick: while the user reads the
-                // synopsis, send the best candidate to TorBox so it's cached
-                // (or nearly) by the time PLAY is pressed. Adds ONE torrent
-                // per browsed movie when nothing is cached.
-                val key = Torbox.apiKey(this)
-                if (key != null && MuxConfig.load(this).prewarm) {
-                    try {
-                        val title = m.optString("name", movie?.name ?: "")
-                        val year = m.optString("year", movie?.year ?: "")
-                        val result = MuxEngine.fetch(imdbId, title, year, key, MuxConfig.load(this))
-                        val best = result.streams.firstOrNull { !it.cached }
-                        if (best != null) Torbox.startDownload(key, best.hash, best.name)
-                    } catch (e: Exception) { /* silent - prewarm is best-effort */ }
-                }
-            } catch (e: Exception) { /* detail text stays empty */ }
+            if (autoplay) runOnUiThread { if (!isFinishing) findSources(pickBest = true) }
+
+            // AIOStreams preloadStreams trick: while the user reads the
+            // synopsis, send the best candidate to TorBox so it's cached
+            // (or nearly) by the time PLAY is pressed. Adds ONE torrent
+            // per browsed movie when nothing is cached.
+            val key = Torbox.apiKey(this)
+            if (!autoplay && key != null && MuxConfig.load(this).prewarm) {
+                try {
+                    val m = meta
+                    val title = m?.optString("name", movie?.name ?: "") ?: movie?.name ?: ""
+                    val year = m?.optString("year", movie?.year ?: "") ?: movie?.year ?: ""
+                    val result = MuxEngine.fetch(imdbId, title, year, key, MuxConfig.load(this))
+                    val best = result.streams.firstOrNull { !it.cached }
+                    if (best != null) Torbox.startDownload(key, best.hash, best.name)
+                } catch (e: Exception) { /* silent - prewarm is best-effort */ }
+            }
         }.start()
-
-        findViewById<View>(R.id.mPlay).setOnClickListener { play() }
     }
 
-    private fun load(url: String, view: ImageView) {
-        Coil.imageLoader(this).enqueue(
-            ImageRequest.Builder(this).data(url)
-                .placeholder(R.drawable.placeholder_poster)
-                .error(R.drawable.placeholder_poster)
-                .crossfade(true).target(view).build())
+    private fun renderMeta(m: JSONObject) {
+        findViewById<TextView>(R.id.mDesc).text = m.optString("description", "")
+        val rating = m.optString("imdbRating", "")
+        findViewById<TextView>(R.id.mRating).apply {
+            text = "★ $rating"
+            visibility = if (rating.isNotEmpty()) View.VISIBLE else View.GONE
+        }
+        findViewById<TextView>(R.id.mYear).text = m.optString("year", movie?.year ?: "")
+        findViewById<TextView>(R.id.mRuntime).text = m.optString("runtime", "")
+        val genres = m.optJSONArray("genres") ?: m.optJSONArray("genre")
+        val gl = ArrayList<String>()
+        if (genres != null) for (i in 0 until minOf(3, genres.length())) gl.add(genres.optString(i))
+        findViewById<TextView>(R.id.mGenres).text = gl.joinToString("  ·  ")
+        val cast = m.optJSONArray("cast")
+        if (cast != null && cast.length() > 0) {
+            val names = ArrayList<String>()
+            for (i in 0 until minOf(4, cast.length())) names.add(cast.optString(i))
+            findViewById<TextView>(R.id.mCast).text = "Cast  ·  " + names.joinToString(", ")
+        }
+        m.optString("background").takeIf { it.isNotEmpty() }?.let {
+            background = it
+            Ui.loadBackdrop(findViewById(R.id.mBackdrop), it)
+        }
+        m.optString("logo").takeIf { it.isNotEmpty() }?.let {
+            val logo = findViewById<ImageView>(R.id.mLogo)
+            logo.visibility = View.VISIBLE
+            findViewById<TextView>(R.id.mTitle).visibility = View.GONE
+            Ui.loadImage(logo, it, 0f, android.R.color.transparent, 150)
+        }
     }
 
-    private fun play() {
+    private fun setBusy(b: Boolean, text: String) {
+        busy = b
+        status.text = text
+        playBtn.alpha = if (b) 0.5f else 1f
+        sourcesBtn.alpha = if (b) 0.5f else 1f
+    }
+
+    private fun findSources(pickBest: Boolean) {
+        if (busy) return
         val key = Torbox.apiKey(this)
         if (key == null) {
             AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog)
@@ -99,29 +137,23 @@ class MovieDetailActivity : Activity() {
         }
 
         val imdbId = movie?.id ?: return
-        val dlg = AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog)
-            .setMessage("Finding sources…")
-            .setCancelable(false)
-            .show()
+        setBusy(true, "Finding sources…")
 
         Thread {
             try {
                 val title = meta?.optString("name") ?: movie?.name ?: ""
                 val year = meta?.optString("year") ?: (movie?.year ?: "")
-
-                // AIOStreams-style mux: parallel providers -> parse -> dedupe ->
-                // batched cache check -> profile filter/sort -> uniform chips
                 val config = MuxConfig.load(this)
                 val result = MuxEngine.fetch(imdbId, title, year, key, config)
 
                 if (result.streams.isEmpty()) {
                     runOnUiThread {
-                        dlg.dismiss()
-                        Toast.makeText(this, "No sources found for this movie", Toast.LENGTH_LONG).show()
+                        if (isFinishing) return@runOnUiThread
+                        setBusy(false, "No sources found for this movie")
                     }
                     return@Thread
                 }
-                val arr = org.json.JSONArray()
+                val arr = JSONArray()
                 for (t in result.streams) {
                     arr.put(JSONObject()
                         .put("name", t.attrs.resolutionLabel)
@@ -132,62 +164,72 @@ class MovieDetailActivity : Activity() {
                         .put("encode", t.attrs.encode)
                         .put("cached", t.cached))
                 }
-                // TorBox's cache is thinner than Real-Debrid's: when NOTHING is
-                // instant, offering a one-tap download of the best source beats
-                // a wall of identical rows.
-                if (result.cachedCount == 0 && result.uncachedCount > 0) {
-                    val best1080 = result.streams.indexOfFirst { it.attrs.resolution == 1080 }
-                    val best4k = result.streams.indexOfFirst { it.attrs.resolution == 2160 }
-                    runOnUiThread {
-                        dlg.dismiss()
-                        android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog)
-                            .setTitle("Nothing instant on TorBox yet")
-                            .setMessage("Nothing cached for this movie. Download the best source now?\n" +
-                                "(download plays automatically when ready)")
-                            .setPositiveButton("Best 4K") { _, _ ->
-                                launchPlayer(arr, if (best4k >= 0) best4k else 0, imdbId)
-                            }
-                            .setNeutralButton("Best 1080p") { _, _ ->
-                                launchPlayer(arr, if (best1080 >= 0) best1080 else 0, imdbId)
-                            }
-                            .setNegativeButton("Browse all") { _, _ ->
-                                launchPicker(arr, imdbId, result)
-                            }
-                            .show()
-                    }
-                    return@Thread
-                }
 
                 runOnUiThread {
-                    dlg.dismiss()
-                    startActivity(Intent(this, SourcePickerActivity::class.java).apply {
-                        putExtra("movieTitle", movie?.name)
-                        putExtra("videoId", "movie:$imdbId")
-                        putExtra("videoTitle", movie?.name)
-                        putExtra("streamsJson", arr.toString())
-                        putStringArrayListExtra("providers", ArrayList(result.providers))
-                    })
+                    if (isFinishing) return@runOnUiThread
+                    setBusy(false, "${result.streams.size} sources  ·  ${result.cachedCount} instant ⚡")
+                    when {
+                        pickBest && result.cachedCount > 0 -> {
+                            val best = result.streams.indexOfFirst { it.cached }
+                            launchPlayer(arr, best, imdbId)
+                        }
+                        pickBest -> {
+                            // TorBox's cache is thinner than Real-Debrid's: when NOTHING is
+                            // instant, offering a one-tap download of the best source beats
+                            // a wall of identical rows.
+                            val best1080 = result.streams.indexOfFirst { it.attrs.resolution == 1080 }
+                            val best4k = result.streams.indexOfFirst { it.attrs.resolution == 2160 }
+                            AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog)
+                                .setTitle("Nothing instant on TorBox yet")
+                                .setMessage("Nothing cached for this movie. Download the best source now?\n" +
+                                    "(download plays automatically when ready)")
+                                .setPositiveButton("Best 4K") { _, _ ->
+                                    launchPlayer(arr, if (best4k >= 0) best4k else 0, imdbId)
+                                }
+                                .setNeutralButton("Best 1080p") { _, _ ->
+                                    launchPlayer(arr, if (best1080 >= 0) best1080 else 0, imdbId)
+                                }
+                                .setNegativeButton("Browse all") { _, _ ->
+                                    launchPicker(arr, imdbId, result)
+                                }
+                                .show()
+                        }
+                        else -> launchPicker(arr, imdbId, result)
+                    }
                 }
             } catch (e: Exception) {
                 runOnUiThread {
-                    dlg.dismiss()
+                    if (isFinishing) return@runOnUiThread
+                    setBusy(false, "Could not find sources: ${e.message}")
                     Toast.makeText(this, "Could not play: ${e.message}", Toast.LENGTH_LONG).show()
                 }
             }
         }.start()
     }
 
-    private fun launchPicker(arr: org.json.JSONArray, imdbId: String, result: MuxEngine.Result) {
+    private fun recordHistory(imdbId: String) {
+        val m = movie ?: return
+        WatchState.upsertHistory(this, WatchState.HistoryEntry(
+            "movie:$imdbId", m.name, m.poster, "movie:$imdbId", m.name, 0, 0,
+            WatchState.getPosition(this, "movie:$imdbId"), 0, System.currentTimeMillis(),
+            thumb = background, backdrop = background))
+    }
+
+    private fun launchPicker(arr: JSONArray, imdbId: String, result: MuxEngine.Result) {
         startActivity(Intent(this, SourcePickerActivity::class.java).apply {
             putExtra("movieTitle", movie?.name)
             putExtra("videoId", "movie:$imdbId")
             putExtra("videoTitle", movie?.name)
             putExtra("streamsJson", arr.toString())
+            putExtra("background", background)
+            putExtra("imdbId", imdbId)
+            putExtra("poster", movie?.poster)
             putStringArrayListExtra("providers", ArrayList(result.providers))
         })
     }
 
-    private fun launchPlayer(arr: org.json.JSONArray, startIndex: Int, imdbId: String) {
+    private fun launchPlayer(arr: JSONArray, startIndex: Int, imdbId: String) {
+        recordHistory(imdbId)
         startActivity(Intent(this, PlayerActivity::class.java).apply {
             putExtra("videoId", "movie:$imdbId")
             putExtra("videoTitle", movie?.name)

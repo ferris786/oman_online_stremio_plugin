@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#000000">
@@ -7,41 +8,107 @@
     <androidx.media3.ui.PlayerView
         android:id="@+id/playerView"
         android:layout_width="match_parent"
-        android:layout_height="match_parent" />
+        android:layout_height="match_parent"
+        app:controller_layout_id="@layout/player_controls"
+        app:show_timeout="5000"
+        app:show_buffering="when_playing"
+        app:use_controller="true" />
 
+    <!-- Top pills: what is playing (left) and which source (right); shown with the controls -->
     <TextView
         android:id="@+id/sourceLabel"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_gravity="top|end"
-        android:layout_marginTop="14dp"
-        android:layout_marginEnd="20dp"
-        android:background="#88000000"
-        android:paddingStart="12dp"
-        android:paddingEnd="12dp"
-        android:paddingTop="6dp"
-        android:paddingBottom="6dp"
-        android:textColor="@color/accent"
-        android:textSize="14sp" />
+        android:layout_gravity="top|start"
+        android:layout_marginTop="22dp"
+        android:layout_marginStart="40dp"
+        android:background="@drawable/pill_bg"
+        android:paddingStart="14dp" android:paddingEnd="14dp"
+        android:paddingTop="6dp" android:paddingBottom="6dp"
+        android:textColor="@color/text"
+        android:textSize="12sp"
+        android:textStyle="bold"
+        android:visibility="gone" />
 
-    <!-- Source browser entry point: one clean pill (MENU key or D-pad up
-         opens the full source list over the video) -->
     <TextView
         android:id="@+id/sourceChips"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="top|end"
-        android:layout_marginTop="54dp"
-        android:layout_marginEnd="20dp"
-        android:background="#aa1c1c24"
+        android:layout_marginTop="22dp"
+        android:layout_marginEnd="40dp"
+        android:background="@drawable/pill_bg"
         android:focusable="true"
         android:clickable="true"
-        android:paddingStart="16dp"
-        android:paddingEnd="16dp"
-        android:paddingTop="8dp"
-        android:paddingBottom="8dp"
+        android:paddingStart="14dp" android:paddingEnd="14dp"
+        android:paddingTop="6dp" android:paddingBottom="6dp"
         android:text="◧  sources"
         android:textColor="@color/accent"
-        android:textSize="14sp"
+        android:textSize="12sp"
+        android:textStyle="bold"
         android:visibility="gone" />
+
+    <!-- Next-episode card: appears near the end, counts down, OK plays now, BACK cancels -->
+    <LinearLayout
+        android:id="@+id/nextCard"
+        android:layout_width="300dp"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|end"
+        android:layout_marginEnd="40dp"
+        android:layout_marginBottom="118dp"
+        android:background="@drawable/sheet_bg"
+        android:focusable="true"
+        android:clickable="true"
+        android:foreground="@drawable/focus_ring"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:padding="10dp"
+        android:visibility="gone">
+
+        <ImageView
+            android:id="@+id/nextThumb"
+            android:layout_width="104dp"
+            android:layout_height="58dp"
+            android:scaleType="centerCrop"
+            android:contentDescription="@string/app_name" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="10dp"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/nextLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="NEXT EPISODE"
+                android:textColor="@color/text_dim"
+                android:textSize="10sp"
+                android:textStyle="bold"
+                android:letterSpacing="0.1" />
+
+            <TextView
+                android:id="@+id/nextTitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:textColor="@color/text"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:maxLines="1"
+                android:ellipsize="end" />
+
+            <TextView
+                android:id="@+id/nextHint"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="▶ OK plays now · BACK cancels"
+                android:textColor="@color/accent"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+    </LinearLayout>
 </FrameLayout>

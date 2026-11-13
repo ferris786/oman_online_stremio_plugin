@@ -1,5 +1,6 @@
 const axios = require("axios");
 const cheerio = require("cheerio");
+const tmdb = require("./tmdb");
 
 // osmanonline.co.uk was redesigned (Nov 2026). The old osmanonline.info domain is dead
 // behind a Cloudflare 526, so the catalog now scrapes the new Next.js site:
@@ -226,11 +227,19 @@ async function getSeries() {
                 name: name,
                 poster: (metadata && metadata.poster) || sitePosters[slug] || null,
                 description: metadata ? metadata.overview : `Watch ${name} with English subtitles on OsmanOnline`,
-                slug: slug
+                slug: slug,
+                tmdbNames: [fullTitle, SLUG_TO_TMDB_KEY[slug]].filter(Boolean)
             });
         });
 
         console.log(`Discovered ${series.length} series on ${BASE_URL}`);
+
+        // Backdrops, logos, genres, air dates (the app's billboard and
+        // "new this week" row). Best-effort: a TMDB outage leaves the
+        // entries exactly as they were.
+        await tmdb.enrichAll(series);
+        series.forEach(s => { delete s.tmdbNames; });
+
         seriesCache = series;
         seriesCacheTime = Date.now();
         return series;
@@ -269,7 +278,32 @@ function groupEpisodes(absEpisodes, ldSeasons) {
     return absEpisodes.map(abs => ({ abs, season: 1, episode: abs }));
 }
 
+// Catalog search (the manifest advertises it; the app's search screen uses it)
+async function searchSeries(query) {
+    const list = await getSeries();
+    const q = (query || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    if (!q) return list;
+    return list.filter(s =>
+        s.name.toLowerCase().replace(/[^a-z0-9]/g, "").includes(q) ||
+        s.slug.replace(/-/g, "").includes(q));
+}
+
+// Series pages are slow to scrape (up to 20s) and change at most weekly;
+// the app opens a series page on every visit, so keep the result briefly.
+const metaCache = new Map();
+const META_TTL = 10 * 60 * 1000;
+
 async function getMeta(type, id) {
+    const hit = metaCache.get(id);
+    if (hit && (Date.now() - hit.ts) < META_TTL) return hit.value;
+    const value = await buildMeta(type, id);
+    if (value && value.meta && value.meta.videos && value.meta.videos.length) {
+        metaCache.set(id, { value, ts: Date.now() });
+    }
+    return value;
+}
+
+async function buildMeta(type, id) {
     // id format: osmanonline:{slug} where slug may be a legacy "watch-..." slug
     const parts = id.split(":");
     if (parts.length < 2) throw new Error("Invalid id");
@@ -340,13 +374,30 @@ async function getMeta(type, id) {
 
         const grouped = groupEpisodes(absEpisodes, ldSeasons);
 
-        const videos = grouped.map(({ abs, season, episode }) => ({
-            id: `osmanonline:${series.slug}:episode-${abs}`,
-            title: `Episode ${abs}`,
-            season: season,
-            episode: episode,
-            url: `${seriesUrl}episode-${abs}/`
-        }));
+        // Episode stills / overviews / runtimes from TMDB (best-effort)
+        let epInfo = new Map();
+        try {
+            const showData = series.tmdbId ? await tmdb.show(series.tmdbId) : null;
+            if (showData) epInfo = await tmdb.episodes(showData, absEpisodes);
+        } catch (e) { /* un-enriched episodes */ }
+
+        const videos = grouped.map(({ abs, season, episode }) => {
+            const e = epInfo.get(abs);
+            const v = {
+                id: `osmanonline:${series.slug}:episode-${abs}`,
+                title: `Episode ${abs}`,
+                season: season,
+                episode: episode,
+                url: `${seriesUrl}episode-${abs}/`
+            };
+            if (e) {
+                if (e.still) v.thumbnail = e.still;
+                if (e.overview) v.overview = e.overview;
+                if (e.runtime) v.runtime = e.runtime;
+                if (e.aired) v.released = e.aired;
+            }
+            return v;
+        });
 
         return {
             meta: {
@@ -354,7 +405,13 @@ async function getMeta(type, id) {
                 type: "series",
                 name: ldName || series.name,
                 poster: series.poster,
-                background: series.poster,
+                background: series.background || series.poster,
+                logo: series.logo || null,
+                genres: series.genres || [],
+                year: series.year || null,
+                runtime: series.runtime || null,
+                lastAired: series.lastAired || null,
+                nextAir: series.nextAir || null,
                 description: series.description || ldDescription,
                 videos: videos
             }
@@ -365,4 +422,4 @@ async function getMeta(type, id) {
     }
 }
 
-module.exports = { getSeries, getMeta, canonicalSlug, LEGACY_SLUG_MAP };
+module.exports = { getSeries, getMeta, searchSeries, canonicalSlug, LEGACY_SLUG_MAP };

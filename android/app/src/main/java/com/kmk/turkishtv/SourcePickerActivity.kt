@@ -5,26 +5,30 @@ import android.app.AlertDialog
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
-import android.widget.Toast
 import android.view.View
 import android.view.ViewGroup
-import android.widget.LinearLayout
+import android.widget.ImageView
 import android.widget.TextView
+import android.widget.Toast
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 
 /**
- * Full-screen source picker (Comet-style): shows every muxed source as a
- * large, D-pad-friendly row with cached badge, quality, size, seeders and
- * provider. Picking one launches the player on that source (the rest remain
- * available as chips in the player).
+ * Source sheet: every muxed source grouped into Instant ⚡ and Download ⏳,
+ * best pick first and preselected. Picking one launches the chosen player
+ * engine on that source (the rest stay available inside the player).
  */
 class SourcePickerActivity : Activity() {
 
-    data class Row(val name: String, val title: String, val hash: String,
+    data class Row(val index: Int, val name: String, val title: String, val hash: String,
                    val dn: String, val cached: Boolean)
 
-    private var rows: List<Row> = emptyList()
+    private sealed class Item {
+        data class Header(val text: String) : Item()
+        data class Source(val row: Row, val best: Boolean) : Item()
+    }
+
+    private var items: List<Item> = emptyList()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -32,27 +36,48 @@ class SourcePickerActivity : Activity() {
 
         val movieTitle = intent.getStringExtra("movieTitle") ?: ""
         val streamsJson = intent.getStringExtra("streamsJson") ?: run { finish(); return }
+        Ui.loadBackdrop(findViewById(R.id.pkBackdrop), intent.getStringExtra("background") ?: intent.getStringExtra("poster"))
 
         findViewById<TextView>(R.id.pickerMovie).text = movieTitle
 
         val arr = org.json.JSONArray(streamsJson)
-        val list = ArrayList<Row>(arr.length())
+        val rows = ArrayList<Row>(arr.length())
         for (i in 0 until arr.length()) {
             val o = arr.getJSONObject(i)
-            list.add(Row(o.optString("name"), o.optString("title"),
-                o.optString("hash", ""), o.optString("dn", ""),
-                o.optBoolean("cached", true)))
+            rows.add(Row(i, o.optString("name"), o.optString("title"),
+                o.optString("hash", ""), o.optString("dn", ""), o.optBoolean("cached", true)))
         }
-        rows = list
-        val cached = list.count { it.cached }
+        val cached = rows.filter { it.cached }
+        val uncached = rows.filter { !it.cached }
         val providers = intent.getStringArrayListExtra("providers")?.joinToString(" + ") ?: ""
         findViewById<TextView>(R.id.pickerSub).text =
-            "${list.size} sources · $cached instant ⚡ · ${list.size - cached} download ⏳" +
+            "${rows.size} sources  ·  ${cached.size} instant ⚡  ·  ${uncached.size} download ⏳" +
             (if (providers.isNotEmpty()) "\n$providers" else "")
+
+        val built = ArrayList<Item>()
+        if (cached.isNotEmpty()) {
+            built.add(Item.Header("Instant  ⚡"))
+            cached.forEachIndexed { i, r -> built.add(Item.Source(r, i == 0)) }
+        }
+        if (uncached.isNotEmpty()) {
+            built.add(Item.Header("Download first  ⏳"))
+            uncached.forEach { built.add(Item.Source(it, false)) }
+        }
+        items = built
 
         val recycler = findViewById<RecyclerView>(R.id.pickerList)
         recycler.layoutManager = LinearLayoutManager(this)
         recycler.adapter = PickerAdapter()
+        val first = items.indexOfFirst { it is Item.Source }
+        if (first >= 0) focusRow(recycler, first)
+    }
+
+    private fun focusRow(recycler: RecyclerView, pos: Int, attempt: Int = 0) {
+        recycler.post {
+            val v = recycler.findViewHolderForAdapterPosition(pos)?.itemView
+            if (v != null) v.requestFocus()
+            else if (attempt < 6) focusRow(recycler, pos, attempt + 1)
+        }
     }
 
     /**
@@ -64,6 +89,7 @@ class SourcePickerActivity : Activity() {
     private fun launchWithEngine(position: Int) {
         val engine = getSharedPreferences("settings", MODE_PRIVATE).getString("player_engine", "exo") ?: "exo"
         val streamsJson = intent.getStringExtra("streamsJson") ?: return
+        recordHistory()
 
         if (engine == "exo") {
             startActivity(Intent(this, PlayerActivity::class.java).apply {
@@ -100,6 +126,7 @@ class SourcePickerActivity : Activity() {
         Thread {
             val link = Torbox.resolveStream(key, st.optString("hash", ""), st.optString("dn", ""))
             runOnUiThread {
+                if (isFinishing) return@runOnUiThread
                 dlg.dismiss()
                 if (link.startsWith("http")) {
                     try {
@@ -117,32 +144,70 @@ class SourcePickerActivity : Activity() {
         }.start()
     }
 
-    private inner class PickerAdapter : RecyclerView.Adapter<PickerAdapter.VH>() {
-        inner class VH(v: View) : RecyclerView.ViewHolder(v) {
-            val badge: TextView = v.findViewById(R.id.sBadge)
+    private fun recordHistory() {
+        val videoId = intent.getStringExtra("videoId") ?: return
+        val name = intent.getStringExtra("movieTitle") ?: return
+        val bg = intent.getStringExtra("background")
+        WatchState.upsertHistory(this, WatchState.HistoryEntry(
+            videoId, name, intent.getStringExtra("poster"), videoId, name, 0, 0,
+            WatchState.getPosition(this, videoId), 0, System.currentTimeMillis(), thumb = bg, backdrop = bg))
+    }
+
+    /** "1080p · BluRay · x264 · HDR · 12.1GB · 1048↑ · TOR ⚡" -> details / sub lines */
+    private fun splitTitle(r: Row): Pair<String, String> {
+        val parts = r.title.split("·").map { it.trim() }.filter { it.isNotEmpty() }
+        val details = parts.filter { !it.endsWith("GB") && !it.endsWith("MB") && !it.contains("↑") && it != r.name && it != "—" }
+            .filter { !Regex("^(TOR|YTS|TPB|SRV)\\s*[⚡⏳]?$").matches(it) }
+        val size = parts.firstOrNull { it.endsWith("GB") || it.endsWith("MB") }
+        val seeds = parts.firstOrNull { it.contains("↑") }?.replace("↑", " seeds")
+        val provider = parts.firstOrNull { Regex("^(TOR|YTS|TPB|SRV)\\s*[⚡⏳]?$").matches(it) }
+            ?.replace(Regex("[⚡⏳]"), "")?.trim()?.let {
+                when (it) { "TOR" -> "Torrentio"; "SRV" -> "Addon"; else -> it }
+            }
+        return Pair(details.joinToString("  ·  "), listOfNotNull(size, seeds, provider).joinToString("  ·  "))
+    }
+
+    private inner class PickerAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
+        inner class HeaderVH(v: View) : RecyclerView.ViewHolder(v)
+        inner class SourceVH(v: View) : RecyclerView.ViewHolder(v) {
             val quality: TextView = v.findViewById(R.id.sQuality)
             val details: TextView = v.findViewById(R.id.sDetails)
+            val sub: TextView = v.findViewById(R.id.sSub)
+            val badge: TextView = v.findViewById(R.id.sBadge)
         }
 
-        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
-            val v = layoutInflater.inflate(R.layout.item_source_row, parent, false) as LinearLayout
-            return VH(v)
-        }
+        override fun getItemViewType(position: Int) = if (items[position] is Item.Header) 0 else 1
 
-        override fun getItemCount() = rows.size
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder =
+            if (viewType == 0) HeaderVH(layoutInflater.inflate(R.layout.item_source_header, parent, false))
+            else SourceVH(layoutInflater.inflate(R.layout.item_source_row, parent, false))
 
-        override fun onBindViewHolder(holder: VH, position: Int) {
-            val r = rows[position]
-            holder.badge.text = if (r.cached) "⚡" else "⏳"
-            holder.badge.setTextColor(resources.getColor(if (r.cached) R.color.accent else R.color.text_dim))
-            holder.quality.text = r.name
-            holder.details.text = r.title.substringAfter("·", r.title).trim()
-            holder.itemView.onFocusChangeListener = View.OnFocusChangeListener { _, hasFocus ->
-                val scale = if (hasFocus) 1.03f else 1f
-                holder.itemView.animate().scaleX(scale).scaleY(scale).setDuration(120).start()
-                holder.itemView.translationZ = if (hasFocus) 12f else 0f
+        override fun getItemCount() = items.size
+
+        override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
+            when (val item = items[position]) {
+                is Item.Header -> (holder.itemView as TextView).text = item.text
+                is Item.Source -> {
+                    val h = holder as SourceVH
+                    val r = item.row
+                    h.quality.text = when (r.name) { "2160p" -> "4K"; else -> r.name }
+                    val (details, sub) = splitTitle(r)
+                    h.details.text = details
+                    h.sub.text = sub
+                    h.badge.text = when {
+                        item.best -> "BEST PICK"
+                        r.cached -> "⚡"
+                        else -> "⏳"
+                    }
+                    h.badge.setTextColor(resources.getColor(if (r.cached) R.color.accent else R.color.text_dim))
+                    h.itemView.setOnFocusChangeListener { v, f ->
+                        v.translationZ = if (f) 8f else 0f
+                        h.badge.setTextColor(resources.getColor(
+                            if (f) R.color.accent_dark else if (r.cached) R.color.accent else R.color.text_dim))
+                    }
+                    h.itemView.setOnClickListener { launchWithEngine(r.index) }
+                }
             }
-            holder.itemView.setOnClickListener { launchWithEngine(position) }
         }
     }
 }

@@ -1,6 +1,7 @@
 package com.kmk.turkishtv
 
 import okhttp3.OkHttpClient
+import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
@@ -9,11 +10,41 @@ import java.util.concurrent.TimeUnit
  *   /catalog/series/osmanonline_catalog.json -> { metas: [...] }
  *   /meta/series/{id}.json                  -> { meta: { videos: [...] } }
  *   /stream/series/{videoId}.json           -> { streams: [...] }
+ *
+ * v5: catalog/meta carry TMDB enrichment (backdrops, logos, genres, air
+ * dates, per-episode stills/overviews/runtimes). All new fields are optional
+ * so the app keeps working against an older server.
  */
 object Api {
 
-    data class Series(val id: String, val name: String, val poster: String?, val description: String?)
-    data class Episode(val id: String, val title: String, val season: Int, val episode: Int)
+    data class Series(
+        val id: String, val name: String, val poster: String?, val description: String?,
+        val background: String? = null, val logo: String? = null,
+        val genres: List<String> = emptyList(), val year: String? = null,
+        val lastAired: String? = null, val nextAir: String? = null,
+        val episodeCount: Int = 0, val seasonCount: Int = 0
+    ) {
+        /** aired within the last N days (server date strings are yyyy-mm-dd) */
+        fun airedWithinDays(days: Int): Boolean = Ui.daysSince(lastAired)?.let { it in 0..days } ?: false
+    }
+
+    data class Episode(
+        val id: String, val title: String, val season: Int, val episode: Int,
+        val thumbnail: String? = null, val overview: String? = null,
+        val runtimeMin: Int = 0, val released: String? = null
+    ) {
+        /** absolute episode number as the sites count it (from the id) */
+        val absNumber: Int get() = Regex("episode-(\\d+)").find(id)?.groupValues?.get(1)?.toIntOrNull() ?: episode
+        val isUnaired: Boolean get() = Ui.daysSince(released)?.let { it < 0 } ?: false
+    }
+
+    data class SeriesMeta(
+        val id: String, val name: String, val poster: String?, val background: String?,
+        val logo: String?, val description: String?, val genres: List<String>,
+        val year: String?, val runtimeMin: Int, val lastAired: String?, val nextAir: String?,
+        val videos: List<Episode>
+    )
+
     data class Stream(val name: String, val title: String, val url: String)
 
     private val http = OkHttpClient.Builder()
@@ -30,29 +61,52 @@ object Api {
         }
     }
 
-    fun catalog(): List<Series> {
-        val metas = JSONObject(get("/catalog/series/osmanonline_catalog.json")).getJSONArray("metas")
-        val out = ArrayList<Series>(metas.length())
-        for (i in 0 until metas.length()) {
-            val m = metas.getJSONObject(i)
-            out.add(Series(m.getString("id"), m.getString("name"),
-                if (m.isNull("poster")) null else m.optString("poster"),
-                if (m.isNull("description")) null else m.optString("description")))
-        }
+    private fun JSONObject.str(key: String): String? =
+        if (isNull(key)) null else optString(key).takeIf { it.isNotEmpty() }
+
+    private fun JSONObject.strList(key: String): List<String> {
+        val arr = optJSONArray(key) ?: return emptyList()
+        val out = ArrayList<String>(arr.length())
+        for (i in 0 until arr.length()) arr.optString(i).takeIf { it.isNotEmpty() }?.let { out.add(it) }
         return out
     }
 
-    fun episodes(seriesId: String): List<Episode> {
-        val meta = JSONObject(get("/meta/series/" + encode(seriesId) + ".json")).getJSONObject("meta")
-        val videos = meta.getJSONArray("videos")
-        val out = ArrayList<Episode>(videos.length())
-        for (i in 0 until videos.length()) {
-            val v = videos.getJSONObject(i)
-            out.add(Episode(v.getString("id"), v.optString("title", ""),
-                v.optInt("season", 1), v.optInt("episode", 1)))
-        }
+    private fun parseSeries(m: JSONObject) = Series(
+        m.getString("id"), m.getString("name"), m.str("poster"), m.str("description"),
+        m.str("background"), m.str("logo"), m.strList("genres"), m.str("year"),
+        m.str("lastAired"), m.str("nextAir"), m.optInt("episodeCount", 0), m.optInt("seasonCount", 0)
+    )
+
+    private fun parseSeriesList(body: String): List<Series> {
+        val metas = JSONObject(body).getJSONArray("metas")
+        val out = ArrayList<Series>(metas.length())
+        for (i in 0 until metas.length()) out.add(parseSeries(metas.getJSONObject(i)))
         return out
     }
+
+    fun catalog(): List<Series> = parseSeriesList(get("/catalog/series/osmanonline_catalog.json"))
+
+    fun searchSeries(query: String): List<Series> =
+        parseSeriesList(get("/catalog/series/osmanonline_catalog/search=" + encode(query) + ".json"))
+
+    private fun parseEpisode(v: JSONObject) = Episode(
+        v.getString("id"), v.optString("title", ""), v.optInt("season", 1), v.optInt("episode", 1),
+        v.str("thumbnail"), v.str("overview"), v.optInt("runtime", 0), v.str("released")
+    )
+
+    fun seriesMeta(seriesId: String): SeriesMeta {
+        val meta = JSONObject(get("/meta/series/" + encode(seriesId) + ".json")).getJSONObject("meta")
+        val videos = meta.optJSONArray("videos") ?: JSONArray()
+        val eps = ArrayList<Episode>(videos.length())
+        for (i in 0 until videos.length()) eps.add(parseEpisode(videos.getJSONObject(i)))
+        return SeriesMeta(
+            meta.optString("id", seriesId), meta.optString("name", ""), meta.str("poster"),
+            meta.str("background"), meta.str("logo"), meta.str("description"), meta.strList("genres"),
+            meta.str("year"), meta.optInt("runtime", 0), meta.str("lastAired"), meta.str("nextAir"), eps
+        )
+    }
+
+    fun episodes(seriesId: String): List<Episode> = seriesMeta(seriesId).videos
 
     fun streams(videoId: String): List<Stream> {
         val arr = JSONObject(get("/stream/series/" + encode(videoId) + ".json")).getJSONArray("streams")
@@ -67,34 +121,37 @@ object Api {
 
     // ---------- English Movies (Cinemeta + TPB via our addon) ----------
 
-    data class EnMovie(val id: String, val name: String, val poster: String?, val year: String?)
+    data class EnMovie(
+        val id: String, val name: String, val poster: String?, val year: String?,
+        val background: String? = null, val description: String? = null,
+        val rating: String? = null, val runtime: String? = null,
+        val genres: List<String> = emptyList()
+    )
+
     data class Torrent(val name: String, val hash: String, val seeders: Int, val sizeBytes: Long, val quality: String)
 
-    fun enCatalog(catalog: String, skip: Int = 0): List<EnMovie> {
-        // get() prepends BASE_URL itself - pass only the path
-        val path = "/en/catalog/movie/" + catalog + (if (skip > 0) "/$skip" else "")
-        val metas = JSONObject(get(path)).getJSONArray("metas")
+    private fun parseMovies(body: String): List<EnMovie> {
+        val metas = JSONObject(body).getJSONArray("metas")
         val out = ArrayList<EnMovie>(metas.length())
         for (i in 0 until metas.length()) {
             val m = metas.getJSONObject(i)
-            out.add(EnMovie(m.getString("id"), m.getString("name"),
-                if (m.isNull("poster")) null else m.optString("poster"),
-                if (m.isNull("year")) null else m.optString("year")))
+            out.add(EnMovie(
+                m.getString("id"), m.getString("name"), m.str("poster"), m.str("year"),
+                m.str("background"), m.str("description"), m.str("imdbRating"), m.str("runtime"),
+                m.strList("genres").ifEmpty { m.strList("genre") }
+            ))
         }
         return out
     }
 
-    fun enSearch(query: String): List<EnMovie> {
-        val metas = JSONObject(get("/en/search/movie/" + encode(query))).getJSONArray("metas")
-        val out = ArrayList<EnMovie>(metas.length())
-        for (i in 0 until metas.length()) {
-            val m = metas.getJSONObject(i)
-            out.add(EnMovie(m.getString("id"), m.getString("name"),
-                if (m.isNull("poster")) null else m.optString("poster"),
-                if (m.isNull("year")) null else m.optString("year")))
-        }
-        return out
+    fun enCatalog(catalog: String, skip: Int = 0, genre: String? = null): List<EnMovie> {
+        // get() prepends BASE_URL itself - pass only the path
+        val path = "/en/catalog/movie/" + catalog +
+            (if (genre != null) "/genre/" + encode(genre) else if (skip > 0) "/$skip" else "")
+        return parseMovies(get(path))
     }
+
+    fun enSearch(query: String): List<EnMovie> = parseMovies(get("/en/search/movie/" + encode(query)))
 
     fun enMeta(imdbId: String): JSONObject {
         return JSONObject(get("/en/meta/movie/" + encode(imdbId))).getJSONObject("meta")
