@@ -383,6 +383,29 @@ app.get("/en/tmdb/movie/:tmdbId", async (req, res) => {
     }
 });
 
+// ---------------------------------------------------------------------------
+// The Reel: curated discovery lists. The app spins through the catalogue of
+// names, then asks for the one it lands on.
+// ---------------------------------------------------------------------------
+const lists = require("./lists");
+
+app.get("/en/lists", (req, res) => {
+    res.setHeader("Cache-Control", "public, max-age=3600");
+    res.json({ lists: lists.catalogue() });
+});
+
+app.get("/en/list/:id", async (req, res) => {
+    try {
+        const r = lists.recipe(req.params.id);
+        if (!r) return res.status(404).json({ error: "no such list" });
+        const suggestions = await tmdb.discover(r.params, r.id);
+        res.setHeader("Cache-Control", "public, max-age=21600");
+        res.json({ id: r.id, title: r.title, subtitle: r.subtitle, suggestions });
+    } catch (e) {
+        res.status(502).json({ error: e.message });
+    }
+});
+
 app.get("/en/person/:query", async (req, res) => {
     try {
         const out = await tmdb.searchPeople(req.params.query);

@@ -208,6 +208,29 @@ object Api {
     fun personMovies(personId: Int): List<Suggestion> =
         parseSuggestions(get("/en/person/$personId/movies"))
 
+    // ---------- The Reel: curated discovery lists ----------
+
+    data class MovieList(val id: String, val title: String, val subtitle: String?,
+                         val films: List<Suggestion> = emptyList())
+
+    /** names only - what the reel spins through */
+    fun listCatalogue(): List<MovieList> {
+        val arr = JSONObject(get("/en/lists")).optJSONArray("lists") ?: return emptyList()
+        val out = ArrayList<MovieList>(arr.length())
+        for (i in 0 until arr.length()) {
+            val o = arr.getJSONObject(i)
+            out.add(MovieList(o.optString("id"), o.optString("title"), o.str("subtitle")))
+        }
+        return out
+    }
+
+    fun movieList(id: String): MovieList {
+        val body = get("/en/list/" + encode(id))
+        val j = JSONObject(body)
+        return MovieList(j.optString("id", id), j.optString("title"), j.str("subtitle"),
+            parseSuggestions(body))
+    }
+
     data class Review(val author: String, val rating: Int, val createdAt: String?, val content: String)
 
     /**

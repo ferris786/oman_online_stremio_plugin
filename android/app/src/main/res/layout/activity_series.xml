@@ -173,6 +173,19 @@
             android:textSize="20sp" />
 
         <TextView
+            android:id="@+id/railSpin"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:layout_marginTop="8dp"
+            android:background="@drawable/rail_item"
+            android:focusable="true"
+            android:clickable="true"
+            android:gravity="center"
+            android:text="✸"
+            android:textColor="@color/rail_icon_text"
+            android:textSize="20sp" />
+
+        <TextView
             android:id="@+id/railSearch"
             android:layout_width="40dp"
             android:layout_height="40dp"

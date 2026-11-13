@@ -1,6 +1,7 @@
 package com.kmk.turkishtv
 
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.Intent
 import android.os.Bundle
 import android.os.Handler
@@ -46,6 +47,10 @@ class SeriesActivity : Activity() {
     private lateinit var newRow: Row
     private lateinit var seriesRow: Row
 
+    /** where kept-list rows are inserted, and which ones are already shown */
+    private var keptHost = 0
+    private val keptRows = LinkedHashMap<String, Row>()
+
     private val handler = Handler(Looper.getMainLooper())
     private var pendingBackdrop: Runnable? = null
     private var billboardHidden = false
@@ -78,6 +83,7 @@ class SeriesActivity : Activity() {
         splash = findViewById(R.id.splash)
 
         findViewById<View>(R.id.railHome).setOnClickListener { snapTo(0); focusFirstItem() }
+        findViewById<View>(R.id.railSpin).setOnClickListener { startActivity(Intent(this, SpinActivity::class.java)) }
         findViewById<View>(R.id.railSearch).setOnClickListener { startActivity(Intent(this, SearchActivity::class.java)) }
         findViewById<View>(R.id.railSettings).setOnClickListener { startActivity(Intent(this, SettingsActivity::class.java)) }
         bbPrimary.setOnClickListener { onPrimary() }
@@ -87,6 +93,7 @@ class SeriesActivity : Activity() {
         continueRow = addRow("Continue Watching")
         newRow = addRow("New this week")
         seriesRow = addRow("Turkish Series")
+        keptHost = rowsContainer.childCount   // kept lists are inserted here
 
         setupSnapping()
         showSplash()
@@ -94,9 +101,27 @@ class SeriesActivity : Activity() {
         load()
     }
 
+    /**
+     * BACK on the home screen used to drop straight out to the TV launcher,
+     * which is easy to do by accident when walking back up from the player.
+     * Now it asks, and offers Settings as a way to stay in the app.
+     */
+    override fun onBackPressed() {
+        AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog)
+            .setTitle("Leave Wahab TV?")
+            .setMessage("You are on the home screen. Exit the app, or stay here?")
+            .setPositiveButton("Stay") { d, _ -> d.dismiss() }
+            .setNeutralButton("Settings") { _, _ ->
+                startActivity(Intent(this, SettingsActivity::class.java))
+            }
+            .setNegativeButton("Exit") { _, _ -> super.onBackPressed() }
+            .show()
+    }
+
     override fun onResume() {
         super.onResume()
         if (catalog.isNotEmpty()) {
+            refreshKeptRows()
             fillContinueRow()
             // progress may have changed while watching
             (spot as? Spot.C)?.let { c ->
@@ -108,7 +133,7 @@ class SeriesActivity : Activity() {
 
     // ------------------------------------------------------------ rows
 
-    private fun addRow(title: String): Row {
+    private fun addRow(title: String, at: Int = -1): Row {
         val v = layoutInflater.inflate(R.layout.row_section, rowsContainer, false)
         val header = v.findViewById<TextView>(R.id.rowHeader)
         val list = v.findViewById<RecyclerView>(R.id.rowList)
@@ -117,8 +142,104 @@ class SeriesActivity : Activity() {
         list.setHasFixedSize(true)
         list.itemAnimator = null
         v.visibility = View.GONE
-        rowsContainer.addView(v)
+        if (at >= 0) rowsContainer.addView(v, at) else rowsContainer.addView(v)
         return Row(v, header, list)
+    }
+
+    /**
+     * Rows the viewer kept from The Reel. They sit above the stock movie
+     * rows, because a list someone chose deserves better placement than one
+     * we picked for them.
+     */
+    private fun refreshKeptRows() {
+        val kept = KeptLists.all(this)
+        // drop rows that were un-kept while we were away
+        keptRows.keys.toList().filter { id -> kept.none { it.first == id } }.forEach { id ->
+            keptRows.remove(id)?.let { rowsContainer.removeView(it.view) }
+        }
+        kept.forEachIndexed { i, (id, title) ->
+            if (keptRows.containsKey(id)) return@forEachIndexed
+            val row = addRow(title, keptHost + i)
+            keptRows[id] = row
+            row.header.setOnClickListener {
+                startActivity(Intent(this, SpinActivity::class.java).putExtra("listId", id))
+            }
+            Thread {
+                val films = try { Api.movieList(id).films } catch (e: Exception) { emptyList() }
+                runOnUiThread {
+                    if (isFinishing || films.isEmpty()) return@runOnUiThread
+                    row.list.adapter = SuggestionAdapter(films)
+                    row.view.visibility = View.VISIBLE
+                }
+            }.start()
+        }
+    }
+
+    /** films from a kept list: TMDB ids, resolved to IMDb only when opened */
+    private inner class SuggestionAdapter(private val items: List<Api.Suggestion>) :
+        RecyclerView.Adapter<SuggestionAdapter.VH>() {
+        inner class VH(v: View) : RecyclerView.ViewHolder(v) {
+            val poster: ImageView = v.findViewById(R.id.poster)
+        }
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) =
+            VH(layoutInflater.inflate(R.layout.item_poster, parent, false))
+        override fun getItemCount() = items.size
+        override fun onBindViewHolder(holder: VH, position: Int) {
+            val s = items[position]
+            Ui.loadImage(holder.poster, s.poster, 4f, R.drawable.placeholder_poster)
+            holder.itemView.setOnFocusChangeListener { v, f ->
+                val sc = if (f) 1.08f else 1f
+                v.animate().scaleX(sc).scaleY(sc).setDuration(140).start()
+                v.translationZ = if (f) 14f else 0f
+                if (f) show(Spot.M(Api.EnMovie(
+                    id = "", name = s.name, poster = s.poster, year = s.year,
+                    background = s.background, description = s.description, rating = s.rating)))
+            }
+            holder.itemView.setOnClickListener { openSuggestion(s) }
+        }
+    }
+
+    private fun openSuggestion(s: Api.Suggestion) {
+        Thread {
+            val imdbId = try { Api.resolveSuggestion(s.tmdbId) } catch (e: Exception) { null }
+            runOnUiThread {
+                if (isFinishing) return@runOnUiThread
+                if (imdbId == null) {
+                    Toast.makeText(this, "${s.name} has no match in the movie database", Toast.LENGTH_LONG).show()
+                    return@runOnUiThread
+                }
+                startActivity(Intent(this, MovieDetailActivity::class.java).apply {
+                    putExtra("imdbId", imdbId)
+                    putExtra("name", s.name)
+                    putExtra("poster", s.poster)
+                    putExtra("year", s.year)
+                    putExtra("background", s.background)
+                })
+            }
+        }.start()
+    }
+
+    /**
+     * One-time introduction to The Reel. Shown once, after the splash, so it
+     * does not land on top of a cold start.
+     */
+    private fun maybeShowWizard() {
+        if (KeptLists.wizardSeen(this)) return
+        KeptLists.markWizardSeen(this)
+        AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog)
+            .setTitle("New: The Reel")
+            .setMessage(
+                "Looking for something different to watch?\n\n" +
+                "Press ✸ in the left bar and the reel spins through sixty curated lists " +
+                "before landing on one: heists of the seventies, films caught in a time loop, " +
+                "Turkish cinema, the class of 1999, hidden gems almost nobody has rated.\n\n" +
+                "Spin again if it is not for tonight, or keep a list and it becomes a permanent " +
+                "row on this screen.")
+            .setPositiveButton("Spin now") { _, _ ->
+                startActivity(Intent(this, SpinActivity::class.java))
+            }
+            .setNegativeButton("Later", null)
+            .show()
     }
 
     private fun load() {
@@ -128,6 +249,7 @@ class SeriesActivity : Activity() {
                 runOnUiThread {
                     catalog = series
                     seriesById = series.associateBy { it.id }
+                    refreshKeptRows()
                     fillContinueRow()
                     fillNewRow()
                     seriesRow.list.adapter = SeriesAdapter(series, false)
@@ -461,6 +583,7 @@ class SeriesActivity : Activity() {
         splash.animate().alpha(0f).setDuration(700).withEndAction {
             splash.visibility = View.GONE
             focusFirstItem()
+            maybeShowWizard()
         }.start()
     }
 

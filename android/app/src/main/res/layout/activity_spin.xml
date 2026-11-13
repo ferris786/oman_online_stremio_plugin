@@ -1,0 +1,153 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The Reel: spins through list names, lands on one, shows it. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/bg">
+
+    <ImageView
+        android:id="@+id/spinBackdrop"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:scaleType="centerCrop"
+        android:alpha="0.22"
+        android:contentDescription="@string/app_name" />
+
+    <View android:layout_width="match_parent" android:layout_height="match_parent" android:background="@drawable/scrim_bottom" />
+
+    <!-- while spinning: one big centred name -->
+    <LinearLayout
+        android:id="@+id/spinStage"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:gravity="center"
+        android:orientation="vertical">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="THE REEL"
+            android:textColor="@color/accent"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:letterSpacing="0.3" />
+
+        <TextView
+            android:id="@+id/spinName"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:gravity="center"
+            android:fontFamily="@font/cinzel_bold"
+            android:textColor="@color/title_cream"
+            android:textSize="40sp"
+            android:maxLines="2"
+            android:ellipsize="end"
+            android:shadowColor="#cc000000"
+            android:shadowRadius="18" />
+
+        <TextView
+            android:id="@+id/spinSub"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:gravity="center"
+            android:textColor="@color/text_soft"
+            android:textSize="15sp" />
+
+        <ImageView
+            android:layout_width="240dp"
+            android:layout_height="8dp"
+            android:layout_marginTop="18dp"
+            android:src="@drawable/ott_divider"
+            android:contentDescription="@string/app_name" />
+    </LinearLayout>
+
+    <!-- once landed: header, films, actions -->
+    <LinearLayout
+        android:id="@+id/resultStage"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:paddingStart="48dp"
+        android:paddingEnd="40dp"
+        android:paddingTop="26dp"
+        android:visibility="gone">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="THE REEL"
+            android:textColor="@color/accent"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:letterSpacing="0.28" />
+
+        <TextView
+            android:id="@+id/resultTitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:fontFamily="@font/cinzel_bold"
+            android:textColor="@color/title_cream"
+            android:textSize="30sp"
+            android:maxLines="1"
+            android:ellipsize="end" />
+
+        <TextView
+            android:id="@+id/resultSub"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="3dp"
+            android:textColor="@color/text_dim"
+            android:textSize="13sp"
+            android:maxLines="1"
+            android:ellipsize="end" />
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/spinAgain"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@drawable/btn_primary"
+                android:focusable="true"
+                android:clickable="true"
+                android:paddingStart="22dp" android:paddingEnd="22dp"
+                android:paddingTop="10dp" android:paddingBottom="10dp"
+                android:text="↻  Spin again"
+                android:textColor="@color/btn_primary_text"
+                android:textSize="15sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/keepList"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="10dp"
+                android:background="@drawable/btn_primary"
+                android:focusable="true"
+                android:clickable="true"
+                android:paddingStart="22dp" android:paddingEnd="22dp"
+                android:paddingTop="10dp" android:paddingBottom="10dp"
+                android:text="＋  Keep on home"
+                android:textColor="@color/btn_primary_text"
+                android:textSize="15sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/resultGrid"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:layout_marginTop="14dp"
+            android:clipToPadding="false"
+            android:clipChildren="false"
+            android:paddingBottom="16dp"
+            android:descendantFocusability="afterDescendants" />
+    </LinearLayout>
+</FrameLayout>

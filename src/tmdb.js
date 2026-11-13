@@ -356,6 +356,20 @@ function suggestMovies(query) {
     });
 }
 
+/**
+ * Run a /discover/movie recipe (see lists.js). Returns the same suggestion
+ * shape as search, so the app reuses one code path: a picked title is
+ * resolved to an IMDb id only when it is opened.
+ */
+function discover(params, cacheKey) {
+    return memo(suggestCache, `d:${cacheKey}`, SUGGEST_TTL, async () => {
+        const data = await get("/discover/movie", { include_adult: false, ...params });
+        return (data.results || [])
+            .filter(m => m.poster_path)
+            .map(movieSuggestion);
+    });
+}
+
 /** tmdb movie id -> imdb id (cached hard; it never changes) */
 function imdbIdOf(tmdbId) {
     return memo(suggestCache, `ext:${tmdbId}`, EXT_TTL, async () => {
@@ -431,5 +445,5 @@ function trailerForImdb(imdbId) {
 module.exports = {
     resolveId, show, episodes, enrichAll, absToSeasonEp, TMDB_IDS,
     suggestMovies, imdbIdOf, searchPeople, personMovies,
-    reviewsForImdb, trailerForImdb, pickTrailer
+    reviewsForImdb, trailerForImdb, pickTrailer, discover
 };
