@@ -221,15 +221,32 @@ const STREAM_DEADLINE_MS = 20000;
  * videos (vidara per-file failures, kayihome scheme changes, expired
  * mirrors) are dropped before the player ever sees them.
  */
+// Validation must never pull a real media file: axios' `timeout` is an
+// inactivity timeout, so a URL that turns out to be a multi-GB MP4 streams
+// happily for minutes and gets buffered as a string. Every probe therefore
+// gets a byte cap AND an absolute deadline.
+const PROBE_MAX_BYTES = 2 * 1024 * 1024;
+const PROBE_DEADLINE_MS = 8000;
+const VALIDATE_DEADLINE_MS = 20000;
+
+function probeOpts(extra = {}) {
+    return {
+        timeout: 7000,
+        maxContentLength: PROBE_MAX_BYTES,
+        maxBodyLength: PROBE_MAX_BYTES,
+        signal: AbortSignal.timeout(PROBE_DEADLINE_MS),
+        validateStatus: () => true,
+        ...extra
+    };
+}
+
 async function streamIsPlayable(url) {
     try {
-        const { data, status } = await axios.get(url, {
+        const { data, status } = await axios.get(url, probeOpts({
             headers: { "User-Agent": UA },
-            timeout: 7000,
             responseType: "text",
-            transformResponse: x => x,
-            validateStatus: () => true
-        });
+            transformResponse: x => x
+        }));
         if (status !== 200 || typeof data !== "string" || !data.startsWith("#EXTM3U")) {
             return false;
         }
@@ -246,12 +263,10 @@ async function streamIsPlayable(url) {
         if (lines.length === 0) return false;
 
         let checkUrl = abs(url, lines[0]);
-        const resp = await axios.get(checkUrl, {
+        const resp = await axios.get(checkUrl, probeOpts({
             headers: { "User-Agent": UA, "Range": "bytes=0-200", "Accept": "*/*" },
-            timeout: 7000,
-            responseType: "arraybuffer",
-            validateStatus: () => true
-        });
+            responseType: "arraybuffer"
+        }));
         const ct = (resp.headers["content-type"] || "").toLowerCase();
 
         // if it's a variant playlist, check ITS first segment too
@@ -268,12 +283,10 @@ async function streamIsPlayable(url) {
             const probe = async (segLine) => {
                 const segUrl = abs(checkUrl, segLine);
                 try {
-                    const r = await axios.get(segUrl, {
+                    const r = await axios.get(segUrl, probeOpts({
                         headers: { "User-Agent": UA, "Range": "bytes=0-200" },
-                        timeout: 7000,
-                        responseType: "arraybuffer",
-                        validateStatus: () => true
-                    });
+                        responseType: "arraybuffer"
+                    }));
                     return r.status === 200 || r.status === 206;
                 } catch (e) { return false; }
             };
@@ -382,7 +395,12 @@ async function getStream(type, id) {
     // it and fail. (Playlists are small; this is 1-2s per source and the
     // surviving list is cached.)
     if (streams.length > 0) {
-        const checks = await Promise.all(streams.map(st => streamIsPlayable(st.url)));
+        // Hard deadline on the whole validation pass: a source that cannot
+        // be verified in time is dropped rather than holding up the list.
+        const checks = await Promise.all(streams.map(st => Promise.race([
+            streamIsPlayable(st.url),
+            new Promise(resolve => setTimeout(() => resolve(false), VALIDATE_DEADLINE_MS).unref())
+        ])));
         const before = streams.length;
         for (let i = streams.length - 1; i >= 0; i--) {
             if (!checks[i]) {

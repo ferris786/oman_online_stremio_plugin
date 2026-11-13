@@ -149,10 +149,15 @@ async function extractWakeupummah(embedUrl, referrerSite) {
             return null;
         }
 
-        const src = res.data.videoSources.find(v => v.file && v.file.startsWith("http")) ||
-                    res.data.videoSources[0];
+        // Only HLS sources are playable through this pipeline. Some mirrors
+        // hand out a plain MP4 (e.g. an archive.org download): proxying that
+        // as a "playlist" made stream validation pull the whole multi-GB
+        // file, which hung /stream for minutes. Prefer an HLS entry; if the
+        // mirror has none, let the caller try the next mirror.
+        const isHls = (u) => /\.m3u8|\.txt|\/hls\//i.test(u);
+        const src = res.data.videoSources.find(v => v.file && v.file.startsWith("http") && isHls(v.file));
         if (!src || !src.file) {
-            log("wakeupummah: no usable videoSource");
+            log(`wakeupummah: no HLS videoSource (${res.data.videoSources.map(v => (v.file || "").slice(0, 40)).join(", ")})`);
             return null;
         }
 
