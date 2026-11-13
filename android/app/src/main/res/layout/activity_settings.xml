@@ -185,16 +185,42 @@
         android:textColor="@color/text"
         android:textSize="14sp" />
 
-    <Button
-        android:id="@+id/pairBtn"
+    <LinearLayout
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginTop="10dp"
-        android:background="@drawable/row_selector"
-        android:paddingStart="20dp"
-        android:paddingEnd="20dp"
-        android:text="📱  Pair from your phone  (easiest)"
-        android:textColor="@color/accent" />
+        android:orientation="horizontal">
+
+        <Button
+            android:id="@+id/pairBtn"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="@drawable/row_selector"
+            android:paddingStart="20dp"
+            android:paddingEnd="20dp"
+            android:text="📱  Pair from your phone  (easiest)"
+            android:textColor="@color/accent" />
+
+        <Button
+            android:id="@+id/cleanupBtn"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="14dp"
+            android:background="@drawable/row_selector"
+            android:paddingStart="20dp"
+            android:paddingEnd="20dp"
+            android:text="🧹  Clean up TorBox"
+            android:textColor="@color/text" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/cleanupStatus"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:text="Clean up deletes every torrent in your TorBox account (frees the plan's download slots when sources say TorBox is full)."
+        android:textColor="@color/text_dim"
+        android:textSize="12sp" />
 
     <LinearLayout
         android:id="@+id/pairPanel"

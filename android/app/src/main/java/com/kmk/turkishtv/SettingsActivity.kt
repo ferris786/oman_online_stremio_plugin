@@ -87,6 +87,37 @@ class SettingsActivity : Activity() {
             }.start()
         }
 
+        // ---- TorBox cleanup: one tap for the ops-doc "delete all" ----
+        val cleanupBtn = findViewById<Button>(R.id.cleanupBtn)
+        val cleanupStatus = findViewById<TextView>(R.id.cleanupStatus)
+        cleanupBtn.setOnClickListener {
+            val key = Torbox.apiKey(this)
+            if (key == null) { cleanupStatus.text = "Add a TorBox key first"; return@setOnClickListener }
+            cleanupStatus.text = "Checking your TorBox account…"
+            Thread {
+                val st = Torbox.accountState(key)
+                runOnUiThread {
+                    if (isFinishing) return@runOnUiThread
+                    if (st.total < 0) { cleanupStatus.text = "Could not read your TorBox list"; return@runOnUiThread }
+                    android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog)
+                        .setTitle("Clean up TorBox?")
+                        .setMessage("Your account holds ${st.total} torrents (${st.downloading} still downloading).\n" +
+                            "Delete them all? Played movies resolve again in seconds when they are cached.")
+                        .setPositiveButton("Delete all") { _, _ ->
+                            cleanupStatus.text = "Cleaning up…"
+                            Thread {
+                                val msg = Torbox.deleteAll(key)
+                                runOnUiThread { if (!isFinishing) cleanupStatus.text = msg }
+                            }.start()
+                        }
+                        .setNegativeButton("Cancel") { _, _ ->
+                            cleanupStatus.text = "${st.total} torrents, ${st.downloading} downloading (${st.stale} stale)"
+                        }
+                        .show()
+                }
+            }.start()
+        }
+
         // ---- Stream preferences (mux engine) ----
         val balBtn = findViewById<Button>(R.id.profileBalanced)
         val cinBtn = findViewById<Button>(R.id.profileCinema)

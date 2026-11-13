@@ -69,8 +69,12 @@ class MovieDetailActivity : Activity() {
             // synopsis, send the best candidate to TorBox so it's cached
             // (or nearly) by the time PLAY is pressed. Adds ONE torrent
             // per browsed movie when nothing is cached.
+            // Only when the account has slots to spare: every pre-warm is a
+            // real download, and a pile of them is what fills the plan's
+            // active limit and gets every later torrent queued.
             val key = Torbox.apiKey(this)
-            if (!autoplay && key != null && MuxConfig.load(this).prewarm) {
+            if (!autoplay && key != null && MuxConfig.load(this).prewarm &&
+                Torbox.accountState(key).downloading in 0..1) {
                 try {
                     val m = meta
                     val title = m?.optString("name", movie?.name ?: "") ?: movie?.name ?: ""
