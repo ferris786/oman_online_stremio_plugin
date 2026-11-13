@@ -58,14 +58,23 @@ const TMDB_IDS = {
     "vefa-sultan": 285594
 };
 
-let cache = { search: {}, shows: {}, seasons: {} };
+// Bump when the cached SHAPE changes, so a deploy does not keep serving
+// records that predate a new field. (v2 added `trailer` to shows; without
+// this the VPS kept 24 trailer-less shows for the whole 12h TTL.)
+const CACHE_SCHEMA = 2;
+
+let cache = { schema: CACHE_SCHEMA, search: {}, shows: {}, seasons: {} };
 let saveTimer = null;
 
 function loadCache() {
     try {
         if (fs.existsSync(CACHE_FILE)) {
             const parsed = JSON.parse(fs.readFileSync(CACHE_FILE, "utf-8"));
-            cache = { search: {}, shows: {}, seasons: {}, ...parsed };
+            if (parsed.schema !== CACHE_SCHEMA) {
+                console.log(`[TMDB] cache schema ${parsed.schema || 1} -> ${CACHE_SCHEMA}, refetching`);
+                return;
+            }
+            cache = { schema: CACHE_SCHEMA, search: {}, shows: {}, seasons: {}, ...parsed };
         }
     } catch (e) {
         console.warn("[TMDB] cache load failed:", e.message);
