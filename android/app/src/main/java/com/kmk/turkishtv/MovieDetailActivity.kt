@@ -25,6 +25,7 @@ class MovieDetailActivity : Activity() {
     private var meta: JSONObject? = null
     private var background: String? = null
     private var busy = false
+    private var trailerId: String? = null
 
     private lateinit var status: TextView
     private lateinit var playBtn: TextView
@@ -54,6 +55,16 @@ class MovieDetailActivity : Activity() {
         sourcesBtn.setOnClickListener { findSources(pickBest = false) }
         playBtn.requestFocus()
 
+        findViewById<TextView>(R.id.mReviews).setOnClickListener {
+            status.text = "Loading reviews…"
+            Extras.loadReviews(this, imdbId, movie?.name ?: "", meta?.optString("imdbRating")) {
+                status.text = ""
+            }
+        }
+        findViewById<TextView>(R.id.mTrailer).setOnClickListener {
+            trailerId?.let { Extras.playTrailer(this, it, movie?.name ?: "") }
+        }
+
         val autoplay = intent.getBooleanExtra("autoplay", false)
 
         Thread {
@@ -62,6 +73,18 @@ class MovieDetailActivity : Activity() {
                 meta = m
                 runOnUiThread { if (!isFinishing) renderMeta(m) }
             } catch (e: Exception) { /* detail text stays as passed in */ }
+
+            // Cinemeta usually carries trailerStreams already; ask the server
+            // (TMDB) only when it does not.
+            val fromMeta = meta?.optJSONArray("trailerStreams")?.optJSONObject(0)?.optString("ytId")
+                ?: meta?.optJSONArray("trailers")?.optJSONObject(0)?.optString("source")
+            val yt = fromMeta?.takeIf { it.isNotBlank() }
+                ?: try { Api.trailerId(imdbId) } catch (e: Exception) { null }
+            if (yt != null) runOnUiThread {
+                if (isFinishing) return@runOnUiThread
+                trailerId = yt
+                findViewById<TextView>(R.id.mTrailer).visibility = View.VISIBLE
+            }
 
             if (autoplay) runOnUiThread { if (!isFinishing) findSources(pickBest = true) }
 

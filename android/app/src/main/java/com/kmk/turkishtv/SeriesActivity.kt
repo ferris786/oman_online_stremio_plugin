@@ -169,31 +169,46 @@ class SeriesActivity : Activity() {
      * filter let a fifth of the row through wrongly.
      */
     private fun loadMovieRows() {
-        data class Row(val title: String, val fetch: () -> List<Api.EnMovie>)
+        data class Spec(val title: String, val fetch: () -> List<Api.EnMovie>)
+        fun genre(g: String) = Spec(g) { Api.enCatalog("top", 0, g) }
+
         val wanted = listOf(
-            Row("Just added") { Api.enLatestAdded() },
-            Row("New releases") { Api.enCatalog("year", 0) },
-            Row("Popular Movies") { Api.enCatalog("top", 0) },
-            Row("Featured") { Api.enCatalog("imdbRating", 0) },
-            Row("Action") { Api.enCatalog("top", 0, "Action") },
-            Row("Comedy") { Api.enCatalog("top", 0, "Comedy") },
-            Row("Drama") { Api.enCatalog("top", 0, "Drama") },
-            Row("Sci-Fi") { Api.enCatalog("top", 0, "Sci-Fi") },
-            Row("Thriller") { Api.enCatalog("top", 0, "Thriller") },
-            Row("Animation") { Api.enCatalog("top", 0, "Animation") }
+            Spec("Just added") { Api.enLatestAdded() },
+            Spec("New releases") { Api.enCatalog("year", 0) },
+            Spec("Popular Movies") { Api.enCatalog("top", 0) },
+            Spec("Featured") { Api.enCatalog("imdbRating", 0) },
+            Spec("Highly rated this year") { Api.enCatalog("imdbRating", 0, "Drama") },
+            genre("Action"), genre("Adventure"), genre("Comedy"), genre("Drama"),
+            genre("Sci-Fi"), genre("Thriller"), genre("Horror"), genre("Crime"),
+            genre("Mystery"), genre("Romance"), genre("Animation"), genre("Family"),
+            genre("Fantasy"), genre("Documentary"), genre("Biography"),
+            genre("History"), genre("War"), genre("Western"), genre("Music"), genre("Sport")
         )
-        for (r in wanted) {
-            try {
-                val movies = r.fetch()
-                if (movies.isEmpty()) continue
+
+        // Placeholders first so the rows keep their order no matter which
+        // request finishes first, then fill them from a small thread pool -
+        // 25 sequential round trips made the lower rows take far too long.
+        val slots = ArrayList<Row>(wanted.size)
+        val latch = java.util.concurrent.CountDownLatch(1)
+        runOnUiThread {
+            wanted.forEach { slots.add(addRow(it.title)) }
+            latch.countDown()
+        }
+        latch.await()
+
+        val pool = java.util.concurrent.Executors.newFixedThreadPool(5)
+        wanted.forEachIndexed { i, spec ->
+            pool.execute {
+                val movies = try { spec.fetch() } catch (e: Exception) { emptyList() }
+                if (movies.isEmpty()) return@execute
                 runOnUiThread {
                     if (isFinishing) return@runOnUiThread
-                    val row = addRow(r.title)
-                    row.list.adapter = MovieAdapter(movies)
-                    row.view.visibility = View.VISIBLE
+                    slots[i].list.adapter = MovieAdapter(movies)
+                    slots[i].view.visibility = View.VISIBLE
                 }
-            } catch (e: Exception) { /* row simply doesn't appear */ }
+            }
         }
+        pool.shutdown()
     }
 
     private fun focusFirstItem(attempt: Int = 0) {

@@ -22,7 +22,8 @@ object Api {
         val background: String? = null, val logo: String? = null,
         val genres: List<String> = emptyList(), val year: String? = null,
         val lastAired: String? = null, val nextAir: String? = null,
-        val episodeCount: Int = 0, val seasonCount: Int = 0
+        val episodeCount: Int = 0, val seasonCount: Int = 0,
+        val trailer: String? = null
     ) {
         /** aired within the last N days (server date strings are yyyy-mm-dd) */
         fun airedWithinDays(days: Int): Boolean = Ui.daysSince(lastAired)?.let { it in 0..days } ?: false
@@ -42,7 +43,7 @@ object Api {
         val id: String, val name: String, val poster: String?, val background: String?,
         val logo: String?, val description: String?, val genres: List<String>,
         val year: String?, val runtimeMin: Int, val lastAired: String?, val nextAir: String?,
-        val videos: List<Episode>
+        val videos: List<Episode>, val trailer: String? = null
     )
 
     data class Stream(val name: String, val title: String, val url: String)
@@ -74,7 +75,8 @@ object Api {
     private fun parseSeries(m: JSONObject) = Series(
         m.getString("id"), m.getString("name"), m.str("poster"), m.str("description"),
         m.str("background"), m.str("logo"), m.strList("genres"), m.str("year"),
-        m.str("lastAired"), m.str("nextAir"), m.optInt("episodeCount", 0), m.optInt("seasonCount", 0)
+        m.str("lastAired"), m.str("nextAir"), m.optInt("episodeCount", 0), m.optInt("seasonCount", 0),
+        m.str("trailer")
     )
 
     private fun parseSeriesList(body: String): List<Series> {
@@ -102,7 +104,8 @@ object Api {
         return SeriesMeta(
             meta.optString("id", seriesId), meta.optString("name", ""), meta.str("poster"),
             meta.str("background"), meta.str("logo"), meta.str("description"), meta.strList("genres"),
-            meta.str("year"), meta.optInt("runtime", 0), meta.str("lastAired"), meta.str("nextAir"), eps
+            meta.str("year"), meta.optInt("runtime", 0), meta.str("lastAired"), meta.str("nextAir"), eps,
+            meta.str("trailer")
         )
     }
 
@@ -204,6 +207,29 @@ object Api {
 
     fun personMovies(personId: Int): List<Suggestion> =
         parseSuggestions(get("/en/person/$personId/movies"))
+
+    data class Review(val author: String, val rating: Int, val createdAt: String?, val content: String)
+
+    /**
+     * Reviews. IMDb publishes no review API and scraping it breaks their
+     * terms, so these come from TMDB's user reviews. The IMDb rating itself
+     * still comes from the Cinemeta meta.
+     */
+    fun reviews(imdbId: String): List<Review> {
+        val arr = JSONObject(get("/en/reviews/movie/" + encode(imdbId))).optJSONArray("reviews")
+            ?: return emptyList()
+        val out = ArrayList<Review>(arr.length())
+        for (i in 0 until arr.length()) {
+            val o = arr.getJSONObject(i)
+            out.add(Review(o.optString("author", "anonymous"), o.optInt("rating", 0),
+                o.str("createdAt"), o.optString("content", "")))
+        }
+        return out
+    }
+
+    /** trailer fallback when the Cinemeta meta carries no trailerStreams */
+    fun trailerId(imdbId: String): String? =
+        JSONObject(get("/en/trailer/movie/" + encode(imdbId))).str("ytId")
 
     /** external subtitles for a movie (OpenSubtitles via the addon) */
     fun subtitles(imdbId: String): List<Subtitle> {

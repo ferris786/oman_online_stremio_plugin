@@ -33,6 +33,12 @@ class PlayerActivity : Activity() {
 
     companion object {
         const val SEEK_STEP_MS = 10_000L
+        /** rapid ◀ ▶ presses are merged; the seek fires this long after the last one */
+        const val SEEK_COMMIT_MS = 450L
+        /** no buffering panel for this long after a seek - it would just flash */
+        const val SEEK_SETTLE_MS = 1_500L
+        /** brief stalls are normal on these CDNs; only show the panel if it persists */
+        const val BUFFER_PANEL_DELAY_MS = 900L
         /** auto-fallback stops after this many failures; the user picks from the source list */
         const val MAX_AUTO_FALLBACK = 5
     }
@@ -51,7 +57,16 @@ class PlayerActivity : Activity() {
     private lateinit var bufferBar: ProgressBar
     private lateinit var bufferText: TextView
     private lateinit var diagPanel: TextView
+    private lateinit var seekIndicator: TextView
     private lateinit var skin: PlayerSkin
+
+    // Seeking. Each ◀ ▶ press adds to an offset and only the last one is
+    // committed, so holding the key is one network seek instead of ten. The
+    // buffering panel is suppressed while that is happening - it used to pop
+    // up on every single press and swallow the next one.
+    private var pendingSeekMs = 0L
+    private var seekBaseMs = -1L
+    private var lastSeekAt = 0L
 
     // diagnostics state
     private var decoderName = "-"
@@ -102,6 +117,7 @@ class PlayerActivity : Activity() {
         bufferBar = findViewById(R.id.bufferBar)
         bufferText = findViewById(R.id.bufferText)
         diagPanel = findViewById(R.id.diagPanel)
+        seekIndicator = findViewById(R.id.seekIndicator)
         ctlTitle = playerView.findViewById(R.id.ctlTitle)
         ctlSub = playerView.findViewById(R.id.ctlSub)
         // D-pad scrubbing on the time bar defaults to duration/20 per press
@@ -735,8 +751,23 @@ class PlayerActivity : Activity() {
 
     // ------------------------------------------------------------ buffering
 
+    private val showBufferPanel = Runnable {
+        // still buffering, and not just settling after a seek?
+        if (player.playbackState == Player.STATE_BUFFERING && !seekPending()) {
+            bufferPanel.visibility = View.VISIBLE
+        }
+    }
+
     private fun showBuffering(on: Boolean) {
-        bufferPanel.visibility = if (on) View.VISIBLE else View.GONE
+        playerView.removeCallbacks(showBufferPanel)
+        if (!on) {
+            bufferPanel.visibility = View.GONE
+            return
+        }
+        // A seek always buffers briefly. Showing the panel for that made it
+        // flash on every arrow press, which is what felt like interference.
+        if (seekPending()) return
+        playerView.postDelayed(showBufferPanel, BUFFER_PANEL_DELAY_MS)
     }
 
     /** % of the 30 s minimum buffer that is filled, plus the live download rate */
@@ -903,12 +934,43 @@ class PlayerActivity : Activity() {
         root.post { root.getChildAt(1)?.requestFocus() }
     }
 
+    /**
+     * Accumulate a seek instead of firing one per key press. The indicator
+     * shows where you will land; the actual seek happens once you stop
+     * pressing, which is both faster and stops every press triggering a
+     * fresh buffering round.
+     */
     private fun seekBy(deltaMs: Long) {
         val dur = player.duration
-        val target = (player.currentPosition + deltaMs).coerceAtLeast(0)
-        player.seekTo(if (dur > 0) target.coerceAtMost(dur - 1000) else target)
+        if (seekBaseMs < 0) seekBaseMs = player.currentPosition
+        val maxPos = if (dur > 0) dur - 1000 else Long.MAX_VALUE
+        pendingSeekMs = (seekBaseMs + pendingSeekMs + deltaMs).coerceIn(0, maxPos) - seekBaseMs
+        lastSeekAt = System.currentTimeMillis()
+
+        val target = seekBaseMs + pendingSeekMs
+        val sign = if (pendingSeekMs >= 0) "+" else "-"
+        val offset = Math.abs(pendingSeekMs) / 1000
+        seekIndicator.text = skinCase("${Ui.msLabel(target)}   ($sign${offset}s)")
+        seekIndicator.visibility = View.VISIBLE
+        showBuffering(false)
         playerView.showController()
+
+        playerView.removeCallbacks(commitSeek)
+        playerView.postDelayed(commitSeek, SEEK_COMMIT_MS)
     }
+
+    private val commitSeek = Runnable {
+        if (seekBaseMs >= 0) {
+            player.seekTo((seekBaseMs + pendingSeekMs).coerceAtLeast(0))
+            player.playWhenReady = true
+        }
+        pendingSeekMs = 0
+        seekBaseMs = -1
+        seekIndicator.visibility = View.GONE
+    }
+
+    private fun seekPending() = seekBaseMs >= 0 ||
+        System.currentTimeMillis() - lastSeekAt < SEEK_SETTLE_MS
 
     /**
      * ◀ ▶ seek 10 s immediately, even while the controls are hidden (the
@@ -920,11 +982,12 @@ class PlayerActivity : Activity() {
         if (event.action == KeyEvent.ACTION_DOWN && nextCard.visibility != View.VISIBLE && streams.isNotEmpty()) {
             val hidden = !playerView.isControllerFullyVisible
             when (event.keyCode) {
+                // The activity owns ◀ ▶ in both states now. The time bar used
+                // to also scrub when the controller was showing, so the two
+                // mechanisms fought over the same press.
                 KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> {
-                    if (hidden) {
-                        seekBy(if (event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT) -SEEK_STEP_MS else SEEK_STEP_MS)
-                        return true
-                    }
+                    seekBy(if (event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT) -SEEK_STEP_MS else SEEK_STEP_MS)
+                    return true
                 }
                 // ▲ sources / ▼ tracks work straight from a hidden controller;
                 // once it is showing, normal focus navigation takes over.
@@ -989,6 +1052,8 @@ class PlayerActivity : Activity() {
         }
         playerView.removeCallbacks(saveRunnable)
         playerView.removeCallbacks(tick)
+        playerView.removeCallbacks(commitSeek)
+        playerView.removeCallbacks(showBufferPanel)
         player.pause()
         super.onStop()
     }

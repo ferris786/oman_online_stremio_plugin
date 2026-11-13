@@ -126,6 +126,13 @@ class EpisodesActivity : Activity() {
         ).joinToString("  ·  ")
         synopsis.text = m.description ?: ""
 
+        m.trailer?.let { yt ->
+            findViewById<TextView>(R.id.btnTrailer).apply {
+                visibility = View.VISIBLE
+                setOnClickListener { Extras.playTrailer(this@EpisodesActivity, yt, seriesName) }
+            }
+        }
+
         refreshHistory()
         computeTarget()
         selectSeason(target?.season ?: seasons.lastOrNull() ?: 1, focusId = target?.id)

@@ -103,6 +103,25 @@ function img(p, size) {
     return p ? `${IMG}${size}${p}` : null;
 }
 
+/**
+ * Best YouTube trailer from a TMDB videos list: an official trailer first,
+ * then any trailer, then a teaser. Returns the bare video id, which the TV
+ * hands to the YouTube app.
+ */
+function pickTrailer(videos) {
+    const yt = videos.filter(v => v.site === "YouTube" && v.key);
+    const score = (v) => {
+        let s = 0;
+        if (v.type === "Trailer") s += 10;
+        else if (v.type === "Teaser") s += 5;
+        if (v.official) s += 3;
+        if ((v.iso_639_1 || "en") === "en") s += 2;
+        return s;
+    };
+    const best = yt.sort((a, b) => score(b) - score(a))[0];
+    return best ? best.key : null;
+}
+
 function norm(s) {
     return (s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]/g, "");
 }
@@ -146,7 +165,7 @@ async function show(id) {
     if (fresh(hit, SHOW_TTL)) return hit.data;
     try {
         const d = await get(`/tv/${id}`, {
-            append_to_response: "images",
+            append_to_response: "images,videos",
             include_image_language: "en,null"
         });
         const logos = (d.images && d.images.logos) || [];
@@ -169,6 +188,7 @@ async function show(id) {
             nextAir: d.next_episode_to_air ? d.next_episode_to_air.air_date : null,
             runtime: Array.isArray(d.episode_run_time) && d.episode_run_time.length ? d.episode_run_time[0] : null,
             status: d.status || null,
+            trailer: pickTrailer((d.videos && d.videos.results) || []),
             seasons,
             episodeCount: seasons.reduce((a, s) => a + s.count, 0)
         };
@@ -261,6 +281,7 @@ async function enrichAll(seriesList, concurrency = 4) {
                 s.nextAir = d.nextAir;
                 s.runtime = d.runtime;
                 s.status = d.status;
+                s.trailer = d.trailer;
                 s.seasonCount = d.seasons.length;
                 s.episodeCount = d.episodeCount;
                 if (!s.poster) s.poster = d.poster;
@@ -366,7 +387,40 @@ function personMovies(personId) {
     });
 }
 
+/**
+ * Reviews for a movie. IMDb has no public API and scraping it is against
+ * their terms, so these are TMDB's user reviews - the practical substitute,
+ * and well populated for anything popular (53 for Into the Spider-Verse).
+ * The IMDb rating itself still comes from Cinemeta's meta.
+ */
+function reviewsForImdb(imdbId) {
+    return memo(personCache, `rv:${imdbId}`, PERSON_TTL, async () => {
+        const found = await get(`/find/${imdbId}`, { external_source: "imdb_id" });
+        const movie = (found.movie_results || [])[0];
+        if (!movie) return [];
+        const d = await get(`/movie/${movie.id}/reviews`);
+        return (d.results || []).slice(0, 20).map(r => ({
+            author: r.author || "anonymous",
+            rating: (r.author_details && r.author_details.rating) || null,
+            createdAt: (r.created_at || "").slice(0, 10) || null,
+            content: String(r.content || "").replace(/\r/g, "").trim()
+        })).filter(r => r.content.length > 40);
+    });
+}
+
+/** trailer id for a movie, when Cinemeta has none */
+function trailerForImdb(imdbId) {
+    return memo(personCache, `tr:${imdbId}`, PERSON_TTL, async () => {
+        const found = await get(`/find/${imdbId}`, { external_source: "imdb_id" });
+        const movie = (found.movie_results || [])[0];
+        if (!movie) return null;
+        const d = await get(`/movie/${movie.id}/videos`);
+        return pickTrailer(d.results || []);
+    });
+}
+
 module.exports = {
     resolveId, show, episodes, enrichAll, absToSeasonEp, TMDB_IDS,
-    suggestMovies, imdbIdOf, searchPeople, personMovies
+    suggestMovies, imdbIdOf, searchPeople, personMovies,
+    reviewsForImdb, trailerForImdb, pickTrailer
 };

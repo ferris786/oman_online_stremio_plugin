@@ -67,6 +67,7 @@
                 android:includeFontPadding="false" />
 
             <androidx.media3.ui.DefaultTimeBar android:id="@id/exo_progress"
+                android:focusable="false"
                 android:layout_width="0dp"
                 android:layout_height="24dp"
                 android:layout_weight="1"

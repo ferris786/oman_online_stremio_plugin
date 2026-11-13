@@ -81,7 +81,10 @@ async function enCatalog(catalog, skip, genre) {
     if (genre) url = `${base}/genre=${encodeURIComponent(genre)}.json`;
     else if (skip) url = `${base}/skip=${parseInt(skip) || 0}.json`;
     const data = await fetchJson(url);
-    let metas = (data && data.metas) || [];
+    // Cinemeta's movie catalogs are clean today, but a mislabelled TV entry
+    // would otherwise sit in a movie row with no playable source, so drop
+    // anything that does not declare itself a movie.
+    let metas = ((data && data.metas) || []).filter(m => !m.type || m.type === "movie");
     if (genre) {
         const want = genre.toLowerCase();
         const exact = metas.filter(m => genreOf(m).some(g => String(g).toLowerCase() === want));

@@ -407,6 +407,7 @@ async function buildMeta(type, id) {
                 poster: series.poster,
                 background: series.background || series.poster,
                 logo: series.logo || null,
+                trailer: series.trailer || null,
                 genres: series.genres || [],
                 year: series.year || null,
                 runtime: series.runtime || null,

@@ -50,6 +50,20 @@
         android:letterSpacing="0.12"
         android:visibility="gone" />
 
+    <TextView
+        android:id="@+id/seekIndicator"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:background="@drawable/ott_panel"
+        android:fontFamily="@font/cinzel_bold"
+        android:paddingStart="24dp" android:paddingEnd="24dp"
+        android:paddingTop="13dp" android:paddingBottom="13dp"
+        android:textColor="@color/title_cream"
+        android:textSize="22sp"
+        android:letterSpacing="0.06"
+        android:visibility="gone" />
+
     <!-- Buffering -->
     <LinearLayout
         android:id="@+id/bufferPanel"

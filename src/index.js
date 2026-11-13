@@ -405,6 +405,31 @@ app.get("/en/person/:personId/movies", async (req, res) => {
     }
 });
 
+// IMDb publishes no review API, so these are TMDB's user reviews. The
+// IMDb rating itself still comes from the Cinemeta meta.
+app.get("/en/reviews/movie/:imdbId", async (req, res) => {
+    try {
+        if (!/^tt\d+$/.test(req.params.imdbId)) return res.status(400).json({ error: "bad id" });
+        const reviews = await tmdb.reviewsForImdb(req.params.imdbId);
+        res.setHeader("Cache-Control", "public, max-age=86400");
+        res.json({ reviews });
+    } catch (e) {
+        res.status(502).json({ error: e.message });
+    }
+});
+
+// Cinemeta usually carries trailerStreams already; this is the fallback.
+app.get("/en/trailer/movie/:imdbId", async (req, res) => {
+    try {
+        if (!/^tt\d+$/.test(req.params.imdbId)) return res.status(400).json({ error: "bad id" });
+        const ytId = await tmdb.trailerForImdb(req.params.imdbId);
+        res.setHeader("Cache-Control", "public, max-age=86400");
+        res.json({ ytId });
+    } catch (e) {
+        res.status(502).json({ error: e.message });
+    }
+});
+
 app.get("/en/subtitles/movie/:imdbId", async (req, res) => {
     try {
         if (!/^tt\d+$/.test(req.params.imdbId)) return res.status(400).json({ error: "bad id" });
