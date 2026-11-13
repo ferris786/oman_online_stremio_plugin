@@ -204,10 +204,22 @@ object Api {
      * every quality tier (720p/1080p/2160p). Used in the fallback path when
      * the addon's server IP is blocked by indexes.
      */
+    // yts.lt now redirects to yts.gg with an "API base is moving" notice
+    // pointing at movies-api.accel.li; try the new base first, old one after.
+    private val YTS_BASES = listOf("https://movies-api.accel.li/api/v2", "https://yts.lt/api/v2")
+
     fun ytsByImdb(imdbId: String): List<Torrent> {
+        for (base in YTS_BASES) {
+            val list = ytsFrom(base, imdbId)
+            if (list.isNotEmpty()) return list
+        }
+        return emptyList()
+    }
+
+    private fun ytsFrom(base: String, imdbId: String): List<Torrent> {
         val out = ArrayList<Torrent>()
         try {
-            val body = rawGet("https://yts.lt/api/v2/list_movies.json?query_term=" + encode(imdbId))
+            val body = rawGet("$base/list_movies.json?query_term=" + encode(imdbId))
             val movie = JSONObject(body).getJSONObject("data")
                 .optJSONArray("movies")?.optJSONObject(0) ?: return out
             val title = movie.optString("title", "")

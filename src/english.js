@@ -116,10 +116,21 @@ function rankCandidate(c) {
 }
 
 // YTS: exact by-IMDb movie lookup with every quality tier (720p/1080p/2160p)
+// yts.lt redirects to yts.gg with an "API base is moving" notice naming
+// movies-api.accel.li; try the new base first and fall back to the old one.
+const YTS_BASES = ["https://movies-api.accel.li/api/v2", "https://yts.lt/api/v2"];
+
 async function ytsTorrents(imdbId) {
+    for (const base of YTS_BASES) {
+        const list = await ytsFrom(base, imdbId);
+        if (list.length) return list;
+    }
+    return [];
+}
+
+async function ytsFrom(base, imdbId) {
     try {
-        const data = await fetchJson(
-            `https://yts.lt/api/v2/list_movies.json?query_term=${encodeURIComponent(imdbId)}`, 10000);
+        const data = await fetchJson(`${base}/list_movies.json?query_term=${encodeURIComponent(imdbId)}`, 10000);
         const movie = data && data.data && data.data.movies && data.data.movies[0];
         if (!movie || !Array.isArray(movie.torrents)) return [];
         return movie.torrents.map(t => ({

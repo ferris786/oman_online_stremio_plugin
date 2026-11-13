@@ -19,6 +19,7 @@ object Torbox {
         .build()
 
     private const val BASE = "https://api.torbox.app/v1/api"
+    private const val CACHE_CHECK_BATCH = 100
 
     fun apiKey(ctx: android.content.Context): String? {
         val k = ctx.getSharedPreferences("settings", android.content.Context.MODE_PRIVATE)
@@ -65,15 +66,29 @@ object Torbox {
         if (hashes.isEmpty()) return emptySet()
         // AIOStreams-style: instant-playable = cached on TorBox OR already in
         // the user's account (library). Both checked in parallel.
+        //
+        // The hashes travel as repeated ?hash= query params and TorBox answers
+        // 414 URI Too Long past ~10 KB (about 220 hashes). Popular titles pull
+        // 300+ Torrentio results, which silently zeroed the cached set and
+        // emptied the source list for anyone with "show uncached" off. Check
+        // in batches of 100 (~4.6 KB each), in parallel.
         var cached: Set<String> = emptySet()
         var library: Set<String> = emptySet()
         val t1 = Thread {
-            cached = try {
-                val sb = StringBuilder("$BASE/torrents/checkcached?format=list")
-                for (h in hashes) sb.append("&hash=").append(h.lowercase())
-                val j = call(sb.toString(), key)
-                parseHashSet(j)
-            } catch (e: Exception) { emptySet() }
+            val out = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+            val batches = hashes.map { it.lowercase() }.distinct().chunked(CACHE_CHECK_BATCH)
+            val workers = batches.map { batch ->
+                Thread {
+                    try {
+                        val sb = StringBuilder("$BASE/torrents/checkcached?format=list")
+                        for (h in batch) sb.append("&hash=").append(h)
+                        out.addAll(parseHashSet(call(sb.toString(), key)))
+                    } catch (e: Exception) { /* this batch counts as uncached */ }
+                }
+            }
+            workers.forEach { it.start() }
+            workers.forEach { it.join() }
+            cached = out
         }
         val t2 = Thread {
             library = try {
