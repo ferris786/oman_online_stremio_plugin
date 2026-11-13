@@ -6,13 +6,19 @@ import android.view.KeyEvent
 import android.view.View
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
+import androidx.media3.common.C
+import androidx.media3.common.Format
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.TrackSelectionOverride
+import androidx.media3.common.Tracks
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.ui.PlayerView
@@ -41,6 +47,16 @@ class PlayerActivity : Activity() {
     private lateinit var nextHint: TextView
     private var ctlTitle: TextView? = null
     private var ctlSub: TextView? = null
+    private lateinit var bufferPanel: View
+    private lateinit var bufferBar: ProgressBar
+    private lateinit var bufferText: TextView
+    private lateinit var diagPanel: TextView
+    private lateinit var skin: PlayerSkin
+
+    // diagnostics state
+    private var decoderName = "-"
+    private var stalls = 0
+    private var diagVisible = false
 
     data class PStream(val name: String, val title: String, val url: String,
                         val hash: String = "", val dn: String = "",
@@ -64,7 +80,10 @@ class PlayerActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_player)
+        // Classic / Terminal / Ottoman - chosen in Settings. Every skin's
+        // layout exposes the same ids, so nothing below changes.
+        skin = PlayerSkin.load(this)
+        setContentView(skin.layout)
 
         playerView = findViewById(R.id.playerView)
         sourceLabel = findViewById(R.id.sourceLabel)
@@ -73,6 +92,10 @@ class PlayerActivity : Activity() {
         nextThumb = findViewById(R.id.nextThumb)
         nextTitle = findViewById(R.id.nextTitle)
         nextHint = findViewById(R.id.nextHint)
+        bufferPanel = findViewById(R.id.bufferPanel)
+        bufferBar = findViewById(R.id.bufferBar)
+        bufferText = findViewById(R.id.bufferText)
+        diagPanel = findViewById(R.id.diagPanel)
         ctlTitle = playerView.findViewById(R.id.ctlTitle)
         ctlSub = playerView.findViewById(R.id.ctlSub)
         // D-pad scrubbing on the time bar defaults to duration/20 per press
@@ -138,16 +161,19 @@ class PlayerActivity : Activity() {
         loadNextEpisode()
     }
 
+    /** Terminal and Ottoman skins set their text in caps */
+    private fun skinCase(s: String) = if (skin.upper) s.uppercase() else s
+
     private fun applyTitles() {
         val series = intent.getStringExtra("seriesName")
         val season = intent.getIntExtra("season", 0)
         val episode = intent.getIntExtra("episode", 0)
-        sourceLabel.text = videoTitle.ifEmpty { series ?: "" }
+        sourceLabel.text = skinCase(videoTitle.ifEmpty { series ?: "" })
         if (series != null && season > 0) {
-            ctlTitle?.text = "Episode ${videoId.substringAfterLast("episode-", "$episode")}"
-            ctlSub?.text = "$series  ·  Season $season"
+            ctlTitle?.text = skinCase("Episode ${videoId.substringAfterLast("episode-", "$episode")}")
+            ctlSub?.text = skinCase("$series  ·  Season $season")
         } else {
-            ctlTitle?.text = videoTitle
+            ctlTitle?.text = skinCase(videoTitle)
             ctlSub?.text = ""
         }
     }
@@ -171,9 +197,23 @@ class PlayerActivity : Activity() {
             .setTrackSelector(DefaultTrackSelector(this))
             .build()
             .also { p ->
+                p.addAnalyticsListener(object : AnalyticsListener {
+                    override fun onVideoDecoderInitialized(
+                        eventTime: AnalyticsListener.EventTime, decoderName: String,
+                        initializedTimestampMs: Long, initializationDurationMs: Long
+                    ) {
+                        this@PlayerActivity.decoderName = decoderName
+                    }
+                })
                 p.addListener(object : Player.Listener {
                     override fun onPlaybackStateChanged(state: Int) {
                         if (state == Player.STATE_READY) playbackStarted = true
+                        if (state == Player.STATE_BUFFERING) {
+                            if (playbackStarted) stalls++
+                            showBuffering(true)
+                        } else {
+                            showBuffering(false)
+                        }
                         if (state == Player.STATE_ENDED && !ended) {
                             ended = true
                             onEnded()
@@ -469,7 +509,9 @@ class PlayerActivity : Activity() {
             cur.cached -> "⚡"
             else -> "⏳"
         }
-        sourcePill.text = "◧  ${streamIndex + 1}/${streams.size}  ·  ${cur.name}  $badge"
+        sourcePill.text = if (skin == PlayerSkin.TERMINAL)
+            "[^] SRC ${streamIndex + 1}/${streams.size} ${cur.name.uppercase()}"
+        else skinCase("◧  ${streamIndex + 1}/${streams.size}  ·  ${cur.name}  $badge")
     }
 
     /**
@@ -615,14 +657,16 @@ class PlayerActivity : Activity() {
     /** one-second tick: time remaining in the controller, next-up card, prefetch */
     private val tick = object : Runnable {
         override fun run() {
+            updateBuffering()
+            updateDiagnostics()
             val dur = player.duration
             val pos = player.currentPosition
             if (dur > 0) {
                 val remaining = dur - pos
                 val series = intent.getStringExtra("seriesName")
                 val season = intent.getIntExtra("season", 0)
-                ctlSub?.text = listOfNotNull(series, season.takeIf { it > 0 }?.let { "Season $it" },
-                    "${(remaining / 60000).coerceAtLeast(0)} min left").joinToString("  ·  ")
+                ctlSub?.text = skinCase(listOfNotNull(series, season.takeIf { it > 0 }?.let { "Season $it" },
+                    "${(remaining / 60000).coerceAtLeast(0)} min left").joinToString("  ·  "))
                 if (nextEpisode != null && playbackStarted) {
                     if (!nextPrefetched && remaining <= 180_000) {
                         nextPrefetched = true
@@ -637,6 +681,166 @@ class PlayerActivity : Activity() {
             }
             playerView.postDelayed(this, 1000)
         }
+    }
+
+    // ------------------------------------------------------------ buffering
+
+    private fun showBuffering(on: Boolean) {
+        bufferPanel.visibility = if (on) View.VISIBLE else View.GONE
+    }
+
+    /** % of the 30 s minimum buffer that is filled, plus the live download rate */
+    private fun updateBuffering() {
+        if (bufferPanel.visibility != View.VISIBLE) return
+        val buffered = player.totalBufferedDuration
+        bufferBar.progress = ((buffered * 100) / 30_000L).toInt().coerceIn(0, 100)
+        val kbps = player.videoFormat?.bitrate?.takeIf { it > 0 }?.let { it / 1000 } ?: 0
+        bufferText.text = listOfNotNull(
+            "${buffered / 1000}s buffered",
+            if (kbps > 0) "${"%.1f".format(kbps / 1000f)} Mbps stream" else null,
+            if (stalls > 0) "$stalls stalls" else null
+        ).joinToString(if (skin.upper) "  ·  " else " · ").let { if (skin.upper) it.uppercase() else it }
+    }
+
+    // ------------------------------------------------------------ diagnostics
+
+    /**
+     * Stream monitor (key 0). Every field comes from the player itself -
+     * no new network calls - and it is the quickest way to tell whether a
+     * stutter is the CDN, a starving buffer, or a codec the TV struggles with.
+     */
+    private fun updateDiagnostics() {
+        if (!diagVisible) return
+        val v: Format? = player.videoFormat
+        val a: Format? = player.audioFormat
+        val host = streams.getOrNull(streamIndex)?.url?.let {
+            try { android.net.Uri.parse(it).host ?: "-" } catch (e: Exception) { "-" }
+        } ?: "-"
+        val dropped = player.videoDecoderCounters?.droppedBufferCount ?: 0
+        val buffered = player.totalBufferedDuration / 1000
+        val bars = (buffered.toInt() / 3).coerceIn(0, 10)
+        val fps = v?.frameRate?.takeIf { it > 0 }?.let { "%.0f".format(it) } ?: "-"
+        val rows = listOf(
+            "SOURCE" to (streams.getOrNull(streamIndex)?.name ?: "-"),
+            "HOST" to host.take(30),
+            "VIDEO" to (v?.let { "${it.width}x${it.height} @ ${fps}fps" } ?: "-"),
+            "CODEC" to ((v?.codecs ?: v?.sampleMimeType ?: "-") + " / " + (a?.sampleMimeType?.substringAfter('/') ?: "-")),
+            "BITRATE" to (v?.bitrate?.takeIf { it > 0 }?.let { "%.2f Mbps".format(it / 1_000_000f) } ?: "-"),
+            "BUFFER" to ("#".repeat(bars) + ".".repeat(10 - bars) + "  ${buffered}s"),
+            "DROPPED" to "$dropped frames",
+            "STALLS" to "$stalls",
+            "DECODER" to decoderName.take(26)
+        )
+        diagPanel.text = rows.joinToString("\n") { (k, v2) -> k.padEnd(9) + v2 }
+    }
+
+    private fun toggleDiagnostics() {
+        diagVisible = !diagVisible
+        diagPanel.visibility = if (diagVisible) View.VISIBLE else View.GONE
+        updateDiagnostics()
+    }
+
+    // ------------------------------------------------------------ tracks
+
+    /**
+     * Audio and subtitle track selection (D-pad down), styled per skin.
+     * Subtitle rows appear once a stream or a side-loaded file provides them.
+     */
+    private fun showTrackSheet() {
+        val tracks = player.currentTracks
+        val audio = ArrayList<Triple<Tracks.Group, Int, Format>>()
+        val subs = ArrayList<Triple<Tracks.Group, Int, Format>>()
+        for (g in tracks.groups) {
+            for (i in 0 until g.length) {
+                if (!g.isTrackSupported(i)) continue
+                val f = g.getTrackFormat(i)
+                when (g.type) {
+                    C.TRACK_TYPE_AUDIO -> audio.add(Triple(g, i, f))
+                    C.TRACK_TYPE_TEXT -> subs.add(Triple(g, i, f))
+                }
+            }
+        }
+        if (audio.size <= 1 && subs.isEmpty()) {
+            Toast.makeText(this, "This source has a single audio track and no subtitles",
+                Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val accent = resources.getColor(skin.accentColor)
+        val dim = resources.getColor(skin.dimColor)
+        val fg = resources.getColor(skin.textColor)
+        val face = skin.fontRes?.let { androidx.core.content.res.ResourcesCompat.getFont(this, it) }
+        val d = resources.displayMetrics.density
+        val pad = (d * 14).toInt()
+
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(pad, pad, pad, pad)
+            setBackgroundResource(skin.panelBg)
+        }
+        fun header(t: String) = TextView(this).apply {
+            text = if (skin.upper) t.uppercase() else t
+            setTextColor(accent); textSize = 13f; typeface = face
+            letterSpacing = 0.14f
+            setPadding(0, (d * 10).toInt(), 0, (d * 4).toInt())
+        }
+        fun row(label: String, selected: Boolean, onPick: () -> Unit) = TextView(this).apply {
+            text = (if (selected) "> " else "  ") + (if (skin.upper) label.uppercase() else label)
+            setTextColor(if (selected) accent else fg)
+            textSize = if (skin.fontRes == R.font.vt323) 19f else 14f
+            typeface = face
+            isFocusable = true; isClickable = true
+            setPadding(pad / 2, (d * 7).toInt(), pad / 2, (d * 7).toInt())
+            setBackgroundResource(R.drawable.row_item_bg)
+            setOnClickListener { onPick(); dialog?.dismiss() }
+        }
+
+        if (audio.isNotEmpty()) {
+            root.addView(header("Audio"))
+            audio.forEachIndexed { n, (g, i, f) ->
+                val lang = f.language?.takeIf { it.isNotBlank() } ?: "und"
+                val ch = f.channelCount.takeIf { it > 0 }?.let { c -> if (c > 2) "$c.1" else "2.0" } ?: ""
+                val br = f.bitrate.takeIf { it > 0 }?.let { "${it / 1000}k" } ?: ""
+                val label = listOf("${n + 1}  $lang", f.sampleMimeType?.substringAfter('/')?.uppercase() ?: "", ch, br)
+                    .filter { it.isNotBlank() }.joinToString("   ")
+                root.addView(row(label, g.isTrackSelected(i)) {
+                    player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+                        .setOverrideForType(TrackSelectionOverride(g.mediaTrackGroup, i))
+                        .build()
+                })
+            }
+        }
+
+        root.addView(header("Subtitles"))
+        val textOff = player.trackSelectionParameters.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT) ||
+            subs.none { (g, i, _) -> g.isTrackSelected(i) }
+        root.addView(row("0  Off", textOff) {
+            player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true).build()
+        })
+        if (subs.isEmpty()) {
+            root.addView(TextView(this).apply {
+                text = if (skin.upper) "NONE IN THIS STREAM" else "None in this stream"
+                setTextColor(dim); textSize = 12f; typeface = face
+                setPadding(pad / 2, (d * 4).toInt(), 0, 0)
+            })
+        } else {
+            subs.forEachIndexed { n, (g, i, f) ->
+                val lang = f.language?.takeIf { it.isNotBlank() } ?: "und"
+                root.addView(row("${n + 1}  $lang", g.isTrackSelected(i)) {
+                    player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+                        .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                        .setOverrideForType(TrackSelectionOverride(g.mediaTrackGroup, i))
+                        .build()
+                })
+            }
+        }
+
+        val scroll = android.widget.ScrollView(this).apply { addView(root) }
+        dialog = android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog)
+            .setView(scroll)
+            .show()
+        root.post { root.getChildAt(1)?.requestFocus() }
     }
 
     private fun seekBy(deltaMs: Long) {
@@ -654,13 +858,19 @@ class PlayerActivity : Activity() {
      */
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (event.action == KeyEvent.ACTION_DOWN && nextCard.visibility != View.VISIBLE && streams.isNotEmpty()) {
+            val hidden = !playerView.isControllerFullyVisible
             when (event.keyCode) {
                 KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> {
-                    if (!playerView.isControllerFullyVisible) {
+                    if (hidden) {
                         seekBy(if (event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT) -SEEK_STEP_MS else SEEK_STEP_MS)
                         return true
                     }
                 }
+                // ▲ sources / ▼ tracks work straight from a hidden controller;
+                // once it is showing, normal focus navigation takes over.
+                KeyEvent.KEYCODE_DPAD_UP -> if (hidden) { showSourceBrowser(); return true }
+                KeyEvent.KEYCODE_DPAD_DOWN -> if (hidden) { showTrackSheet(); return true }
+                KeyEvent.KEYCODE_0, KeyEvent.KEYCODE_NUMPAD_0 -> { toggleDiagnostics(); return true }
                 KeyEvent.KEYCODE_MEDIA_REWIND -> { seekBy(-3 * SEEK_STEP_MS); return true }
                 KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> { seekBy(3 * SEEK_STEP_MS); return true }
             }
@@ -688,9 +898,9 @@ class PlayerActivity : Activity() {
             KeyEvent.KEYCODE_CHANNEL_DOWN -> { cycleSource(-1); true }
             KeyEvent.KEYCODE_MENU -> { showSourceBrowser(); true }
             // reached only when the controller is showing and nothing sits
-            // above the focused control (a hidden controller consumes ▲ to
-            // show itself first)
+            // above/below the focused control
             KeyEvent.KEYCODE_DPAD_UP -> { showSourceBrowser(); true }
+            KeyEvent.KEYCODE_DPAD_DOWN -> { showTrackSheet(); true }
             else -> super.onKeyDown(keyCode, event)
         }
     }

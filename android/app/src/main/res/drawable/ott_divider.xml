@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Ornamental rule: hairline with a centred gold lozenge -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="240dp"
+    android:height="8dp"
+    android:viewportWidth="240"
+    android:viewportHeight="8">
+    <path android:fillColor="#8ce0b34d" android:pathData="M0,3.6 L104,3.6 L104,4.4 L0,4.4 Z" />
+    <path android:fillColor="#8ce0b34d" android:pathData="M136,3.6 L240,3.6 L240,4.4 L136,4.4 Z" />
+    <path android:fillColor="#e0b34d" android:pathData="M120,0 L126,4 L120,8 L114,4 Z" />
+    <path android:fillColor="#8ce0b34d" android:pathData="M109,1.6 L112,4 L109,6.4 L106,4 Z" />
+    <path android:fillColor="#8ce0b34d" android:pathData="M131,1.6 L134,4 L131,6.4 L128,4 Z" />
+</vector>

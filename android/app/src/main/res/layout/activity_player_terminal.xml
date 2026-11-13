@@ -1,0 +1,178 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- TERMINAL skin: MS-DOS text mode. Same ids as activity_player.xml.
+     Text is pure ASCII - VT323 has no box-drawing or block glyphs, so
+     frames are drawables and bars are real progress drawables. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#000000">
+
+    <androidx.media3.ui.PlayerView
+        android:id="@+id/playerView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        app:controller_layout_id="@layout/player_controls_terminal"
+        app:show_timeout="5000"
+        app:use_controller="true" />
+
+    <TextView
+        android:id="@+id/sourceLabel"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|start"
+        android:layout_marginTop="24dp"
+        android:layout_marginStart="42dp"
+        android:background="@drawable/term_pill"
+        android:fontFamily="@font/vt323"
+        android:paddingStart="11dp" android:paddingEnd="11dp"
+        android:paddingTop="2dp" android:paddingBottom="2dp"
+        android:textColor="@color/term_cyan"
+        android:textSize="17sp"
+        android:letterSpacing="0.1"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/sourceChips"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|end"
+        android:layout_marginTop="24dp"
+        android:layout_marginEnd="42dp"
+        android:background="@drawable/term_pill"
+        android:focusable="true"
+        android:clickable="true"
+        android:fontFamily="@font/vt323"
+        android:paddingStart="11dp" android:paddingEnd="11dp"
+        android:paddingTop="2dp" android:paddingBottom="2dp"
+        android:text="[^] SOURCES"
+        android:textColor="@color/term_pill_text"
+        android:textSize="17sp"
+        android:letterSpacing="0.1"
+        android:visibility="gone" />
+
+    <!-- Buffering -->
+    <LinearLayout
+        android:id="@+id/bufferPanel"
+        android:layout_width="340dp"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:background="@drawable/term_panel"
+        android:orientation="vertical"
+        android:padding="18dp"
+        android:visibility="gone">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:fontFamily="@font/vt323"
+            android:text="BUFFERING"
+            android:textColor="@color/term_cyan"
+            android:textSize="19sp"
+            android:letterSpacing="0.18" />
+
+        <ProgressBar
+            android:id="@+id/bufferBar"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="match_parent"
+            android:layout_height="10dp"
+            android:layout_marginTop="10dp"
+            android:max="100"
+            android:progressDrawable="@drawable/progress_term" />
+
+        <TextView
+            android:id="@+id/bufferText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:fontFamily="@font/vt323"
+            android:textColor="@color/term_grey"
+            android:textSize="16sp"
+            android:letterSpacing="0.06" />
+    </LinearLayout>
+
+    <!-- Stream diagnostics -->
+    <TextView
+        android:id="@+id/diagPanel"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|end"
+        android:layout_marginTop="70dp"
+        android:layout_marginEnd="42dp"
+        android:background="@drawable/term_panel"
+        android:fontFamily="@font/vt323"
+        android:paddingStart="16dp" android:paddingEnd="16dp"
+        android:paddingTop="12dp" android:paddingBottom="12dp"
+        android:textColor="@color/term_white"
+        android:textSize="17sp"
+        android:lineSpacingExtra="1dp"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/diagText"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:visibility="gone" />
+
+    <!-- Next episode -->
+    <LinearLayout
+        android:id="@+id/nextCard"
+        android:layout_width="316dp"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|end"
+        android:layout_marginEnd="42dp"
+        android:layout_marginBottom="128dp"
+        android:background="@drawable/term_panel"
+        android:focusable="true"
+        android:clickable="true"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:padding="12dp"
+        android:visibility="gone">
+
+        <ImageView
+            android:id="@+id/nextThumb"
+            android:layout_width="104dp"
+            android:layout_height="58dp"
+            android:scaleType="centerCrop"
+            android:contentDescription="@string/app_name" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="12dp"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:fontFamily="@font/vt323"
+                android:text="NEXT EPISODE"
+                android:textColor="@color/term_cyan"
+                android:textSize="15sp"
+                android:letterSpacing="0.16" />
+
+            <TextView
+                android:id="@+id/nextTitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:fontFamily="@font/vt323"
+                android:textColor="@color/term_yellow"
+                android:textSize="19sp"
+                android:maxLines="1"
+                android:ellipsize="end" />
+
+            <TextView
+                android:id="@+id/nextHint"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:fontFamily="@font/vt323"
+                android:text="[OK] PLAY NOW  [BACK] STAY"
+                android:textColor="@color/term_grey"
+                android:textSize="15sp"
+                android:letterSpacing="0.06" />
+        </LinearLayout>
+    </LinearLayout>
+</FrameLayout>

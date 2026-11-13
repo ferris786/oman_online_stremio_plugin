@@ -118,6 +118,27 @@ class SettingsActivity : Activity() {
             }.start()
         }
 
+        // ---- Player skin (player chrome only, not the rest of the app) ----
+        val skinBtns = mapOf(
+            PlayerSkin.CLASSIC to findViewById<Button>(R.id.skinClassic),
+            PlayerSkin.TERMINAL to findViewById<Button>(R.id.skinTerminal),
+            PlayerSkin.OTTOMAN to findViewById<Button>(R.id.skinOttoman)
+        )
+        fun paintSkins() {
+            val cur = PlayerSkin.load(this)
+            skinBtns.forEach { (s, b) ->
+                b.setTextColor(resources.getColor(if (s == cur) R.color.accent else R.color.text_dim))
+            }
+        }
+        paintSkins()
+        skinBtns.forEach { (s, b) ->
+            b.setOnClickListener {
+                PlayerSkin.save(this, s)
+                paintSkins()
+                Toast.makeText(this, "${s.label} player", Toast.LENGTH_SHORT).show()
+            }
+        }
+
         // ---- Stream preferences (mux engine) ----
         val balBtn = findViewById<Button>(R.id.profileBalanced)
         val cinBtn = findViewById<Button>(R.id.profileCinema)

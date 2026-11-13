@@ -13,4 +13,17 @@
     <color name="new_red">#d64b3a</color>
     <color name="white">#ffffff</color>
     <color name="focus_ring">#ffffff</color>
+
+    <!-- Terminal skin: IBM CGA palette -->
+    <color name="term_bg">#000208</color>
+    <color name="term_cyan">#55ffff</color>
+    <color name="term_yellow">#ffff55</color>
+    <color name="term_green">#55ff55</color>
+    <color name="term_red">#ff5555</color>
+    <color name="term_grey">#aaaaaa</color>
+    <color name="term_white">#ffffff</color>
+
+    <!-- Ottoman skin -->
+    <color name="ott_ink">#120d08</color>
+    <color name="ott_crimson">#6a1f2b</color>
 </resources>

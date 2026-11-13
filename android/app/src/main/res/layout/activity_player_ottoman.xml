@@ -1,0 +1,183 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- OTTOMAN skin: the Wahab TV identity carried into the player - Cinzel
+     titles, gold manuscript rules, ornamental divider. Same ids. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#000000">
+
+    <androidx.media3.ui.PlayerView
+        android:id="@+id/playerView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        app:controller_layout_id="@layout/player_controls_ottoman"
+        app:show_timeout="5000"
+        app:use_controller="true" />
+
+    <TextView
+        android:id="@+id/sourceLabel"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|start"
+        android:layout_marginTop="24dp"
+        android:layout_marginStart="44dp"
+        android:background="@drawable/ott_pill"
+        android:fontFamily="@font/cinzel_medium"
+        android:paddingStart="14dp" android:paddingEnd="14dp"
+        android:paddingTop="5dp" android:paddingBottom="5dp"
+        android:textColor="@color/title_cream"
+        android:textSize="12sp"
+        android:letterSpacing="0.12"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/sourceChips"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|end"
+        android:layout_marginTop="24dp"
+        android:layout_marginEnd="44dp"
+        android:background="@drawable/ott_pill"
+        android:focusable="true"
+        android:clickable="true"
+        android:fontFamily="@font/cinzel_medium"
+        android:paddingStart="14dp" android:paddingEnd="14dp"
+        android:paddingTop="5dp" android:paddingBottom="5dp"
+        android:text="Sources"
+        android:textColor="@color/ott_pill_text"
+        android:textSize="12sp"
+        android:letterSpacing="0.12"
+        android:visibility="gone" />
+
+    <!-- Buffering -->
+    <LinearLayout
+        android:id="@+id/bufferPanel"
+        android:layout_width="320dp"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:background="@drawable/ott_panel"
+        android:gravity="center_horizontal"
+        android:orientation="vertical"
+        android:padding="20dp"
+        android:visibility="gone">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:fontFamily="@font/cinzel_bold"
+            android:text="Buffering"
+            android:textColor="@color/accent"
+            android:textSize="15sp"
+            android:letterSpacing="0.2" />
+
+        <ImageView
+            android:layout_width="200dp"
+            android:layout_height="7dp"
+            android:layout_marginTop="8dp"
+            android:src="@drawable/ott_divider"
+            android:contentDescription="@string/app_name" />
+
+        <ProgressBar
+            android:id="@+id/bufferBar"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="match_parent"
+            android:layout_height="4dp"
+            android:layout_marginTop="10dp"
+            android:max="100"
+            android:progressDrawable="@drawable/progress_gold" />
+
+        <TextView
+            android:id="@+id/bufferText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="9dp"
+            android:gravity="center"
+            android:textColor="@color/text_soft"
+            android:textSize="11sp" />
+    </LinearLayout>
+
+    <!-- Stream diagnostics -->
+    <TextView
+        android:id="@+id/diagPanel"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|end"
+        android:layout_marginTop="68dp"
+        android:layout_marginEnd="44dp"
+        android:background="@drawable/ott_panel"
+        android:fontFamily="monospace"
+        android:paddingStart="16dp" android:paddingEnd="16dp"
+        android:paddingTop="13dp" android:paddingBottom="13dp"
+        android:textColor="@color/text_soft"
+        android:textSize="11sp"
+        android:lineSpacingExtra="2dp"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/diagText"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:visibility="gone" />
+
+    <!-- Next episode -->
+    <LinearLayout
+        android:id="@+id/nextCard"
+        android:layout_width="312dp"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|end"
+        android:layout_marginEnd="44dp"
+        android:layout_marginBottom="124dp"
+        android:background="@drawable/ott_panel"
+        android:focusable="true"
+        android:clickable="true"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:padding="12dp"
+        android:visibility="gone">
+
+        <ImageView
+            android:id="@+id/nextThumb"
+            android:layout_width="104dp"
+            android:layout_height="58dp"
+            android:scaleType="centerCrop"
+            android:contentDescription="@string/app_name" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="12dp"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:fontFamily="@font/cinzel_medium"
+                android:text="Next Episode"
+                android:textColor="@color/accent"
+                android:textSize="10sp"
+                android:letterSpacing="0.16" />
+
+            <TextView
+                android:id="@+id/nextTitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="3dp"
+                android:fontFamily="@font/cinzel_bold"
+                android:textColor="@color/title_cream"
+                android:textSize="15sp"
+                android:maxLines="1"
+                android:ellipsize="end" />
+
+            <TextView
+                android:id="@+id/nextHint"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="OK plays now · BACK cancels"
+                android:textColor="@color/text_dim"
+                android:textSize="11sp" />
+        </LinearLayout>
+    </LinearLayout>
+</FrameLayout>
