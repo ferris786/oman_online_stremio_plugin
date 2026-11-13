@@ -118,6 +118,16 @@ class SettingsActivity : Activity() {
             }.start()
         }
 
+        // ---- Updates: a deliberate check, and a way out of a stuck download ----
+        val updateStatus = findViewById<TextView>(R.id.updateStatus)
+        findViewById<Button>(R.id.updateCheckBtn).setOnClickListener {
+            updateStatus.text = "Checking…"
+            UpdateChecker.checkNow(this) { msg -> updateStatus.text = msg }
+        }
+        findViewById<Button>(R.id.updateRetryBtn).setOnClickListener {
+            UpdateChecker.reinstall(this) { msg -> updateStatus.text = msg }
+        }
+
         // ---- Player skin (player chrome only, not the rest of the app) ----
         val skinBtns = mapOf(
             PlayerSkin.CLASSIC to findViewById<Button>(R.id.skinClassic),

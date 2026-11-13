@@ -319,6 +319,52 @@
     </LinearLayout>
 
     <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="26dp"
+        android:text="Updates"
+        android:textColor="@color/text"
+        android:textSize="17sp"
+        android:textStyle="bold" />
+
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:orientation="horizontal">
+
+        <Button
+            android:id="@+id/updateCheckBtn"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="@drawable/row_selector"
+            android:paddingStart="20dp"
+            android:paddingEnd="20dp"
+            android:text="Check for updates"
+            android:textColor="@color/accent" />
+
+        <Button
+            android:id="@+id/updateRetryBtn"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:background="@drawable/row_selector"
+            android:paddingStart="20dp"
+            android:paddingEnd="20dp"
+            android:text="Clear &amp; re-download"
+            android:textColor="@color/text" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/updateStatus"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:text="Use Clear &amp; re-download if an update ever sticks on &quot;downloading&quot;."
+        android:textColor="@color/text_dim"
+        android:textSize="12sp" />
+
+    <TextView
         android:id="@+id/versionFooter"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
