@@ -76,6 +76,14 @@ class EpisodesActivity : Activity() {
         btnResume.setOnClickListener { target?.let { play(it) } }
         btnSeason.setOnClickListener { showSeasonMenu() }
 
+        findViewById<TextView>(R.id.btnCollection).apply {
+            visibility = View.VISIBLE
+            setOnClickListener {
+                CollectionPicker.show(this@EpisodesActivity, Collections.Item("series", seriesId,
+                    seriesName, seriesPoster, seriesBackdrop, meta?.year))
+            }
+        }
+
         val myListBtn = findViewById<TextView>(R.id.btnMyList)
         myListBtn.visibility = View.VISIBLE
         myListBtn.text = MyList.label(MyList.has(this, "series", seriesId))

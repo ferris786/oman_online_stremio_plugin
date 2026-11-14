@@ -48,7 +48,9 @@ class SeriesActivity : Activity() {
      * long. Home is personal (My List, Continue Watching, recommendations);
      * the other three are whole libraries.
      */
-    enum class Section(val label: String) { HOME("Home"), TURKISH("Turkish"), TV("TV"), MOVIES("Movies") }
+    enum class Section(val label: String) {
+        HOME("Home"), TURKISH("Turkish"), TV("TV"), MOVIES("Movies"), COLLECTIONS("Collections")
+    }
     private var section = Section.HOME
     private var sectionLoadId = 0
 
@@ -99,6 +101,7 @@ class SeriesActivity : Activity() {
         findViewById<View>(R.id.railTurkish).setOnClickListener { goTo(Section.TURKISH) }
         findViewById<View>(R.id.railTv).setOnClickListener { goTo(Section.TV) }
         findViewById<View>(R.id.railMovies).setOnClickListener { goTo(Section.MOVIES) }
+        findViewById<View>(R.id.railCollections).setOnClickListener { goTo(Section.COLLECTIONS) }
         findViewById<View>(R.id.railSpin).setOnClickListener { startActivity(Intent(this, SpinActivity::class.java)) }
         findViewById<View>(R.id.railSearch).setOnClickListener { startActivity(Intent(this, SearchActivity::class.java)) }
         findViewById<View>(R.id.railSettings).setOnClickListener { startActivity(Intent(this, SettingsActivity::class.java)) }
@@ -115,12 +118,12 @@ class SeriesActivity : Activity() {
     // ------------------------------------------------------------ rail
 
     private val railItems by lazy {
-        listOf(R.id.railHome, R.id.railTurkish, R.id.railTv, R.id.railMovies,
+        listOf(R.id.railHome, R.id.railTurkish, R.id.railTv, R.id.railMovies, R.id.railCollections,
                R.id.railSpin, R.id.railSearch, R.id.railSettings)
     }
     private val railLabels by lazy {
         listOf(R.id.railHomeLabel, R.id.railTurkishLabel, R.id.railTvLabel, R.id.railMoviesLabel,
-               R.id.railSpinLabel, R.id.railSearchLabel, R.id.railSettingsLabel)
+               R.id.railCollectionsLabel, R.id.railSpinLabel, R.id.railSearchLabel, R.id.railSettingsLabel)
     }
 
     /** labels appear only while the rail has focus, so it reads as icons at rest */
@@ -144,6 +147,7 @@ class SeriesActivity : Activity() {
             Section.TURKISH -> R.id.railTurkish
             Section.TV -> R.id.railTv
             Section.MOVIES -> R.id.railMovies
+            Section.COLLECTIONS -> R.id.railCollections
         }
         railItems.forEach { findViewById<View>(it).isSelected = it == selected }
     }
@@ -174,7 +178,6 @@ class SeriesActivity : Activity() {
                 newRow = addRow("New this week")
                 keptHost = rowsContainer.childCount
                 fillMyListRow(); fillContinueRow(); fillBecauseRow(); fillNewRow()
-                refreshKeptRows()
                 // a taster from each library, so Home is still a place to browse
                 seriesRow = addRow("Turkish Series")
                 seriesRow?.let {
@@ -216,6 +219,10 @@ class SeriesActivity : Activity() {
                            "Animation", "Documentary", "Action", "Fantasy", "Horror", "Family")
                         .map { g -> RowSpec(g, tv = true) { Api.enSeriesCatalog("top", 0, g) } })
             }
+            Section.COLLECTIONS -> {
+                keptHost = rowsContainer.childCount
+                buildCollections(id)
+            }
             Section.MOVIES -> {
                 keptHost = rowsContainer.childCount
                 asyncRows(id, listOf(
@@ -234,6 +241,115 @@ class SeriesActivity : Activity() {
 
     private inner class RowSpec(val title: String, val tv: Boolean = false,
                                 val fetch: () -> List<Api.EnMovie>)
+
+    /**
+     * Collections: the viewer's own named sets first, then anything kept
+     * from The Reel, then the franchises. Each collection is one row, which
+     * is the same shape as everything else in the app.
+     */
+    private fun buildCollections(loadId: Int) {
+        val mine = Collections.all(this)
+        for (c in mine) {
+            val row = addRow(c.name + "   ·   ${c.items.size}")
+            row.list.adapter = CollectionAdapter(c.items)
+            row.view.visibility = if (c.items.isEmpty()) View.GONE else View.VISIBLE
+            row.header.setOnClickListener { manageCollection(c.name) }
+        }
+        if (mine.isEmpty()) {
+            val row = addRow("Your collections")
+            row.view.visibility = View.VISIBLE
+            row.header.text = "Your collections   ·   none yet. Open any film and press ＋ Collection."
+        }
+
+        // kept Reel lists
+        for ((listId, title) in KeptLists.all(this)) {
+            val row = addRow(title)
+            row.header.setOnClickListener {
+                startActivity(Intent(this, SpinActivity::class.java).putExtra("listId", listId))
+            }
+            Thread {
+                val films = try { Api.movieList(listId).films } catch (e: Exception) { emptyList() }
+                runOnUiThread {
+                    if (isFinishing || loadId != sectionLoadId || films.isEmpty()) return@runOnUiThread
+                    row.list.adapter = SuggestionAdapter(films)
+                    row.view.visibility = View.VISIBLE
+                }
+            }.start()
+        }
+
+        // franchises, from the server
+        Thread {
+            val cat = try { Api.collectionCatalogue() } catch (e: Exception) { emptyList() }
+            runOnUiThread {
+                if (isFinishing || loadId != sectionLoadId) return@runOnUiThread
+                val slots = cat.map { addRow(it.title) }
+                Thread {
+                    val pool = java.util.concurrent.Executors.newFixedThreadPool(4)
+                    cat.forEachIndexed { i, c ->
+                        pool.execute {
+                            val films = try { Api.collection(c.id).films } catch (e: Exception) { emptyList() }
+                            if (films.isEmpty()) return@execute
+                            runOnUiThread {
+                                if (isFinishing || loadId != sectionLoadId) return@runOnUiThread
+                                slots[i].list.adapter = SuggestionAdapter(films)
+                                slots[i].view.visibility = View.VISIBLE
+                            }
+                        }
+                    }
+                    pool.shutdown()
+                }.start()
+            }
+        }.start()
+        focusFirstItemSoon()
+    }
+
+    private fun manageCollection(name: String) {
+        AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog)
+            .setTitle(name)
+            .setItems(arrayOf("Delete this collection")) { _, _ ->
+                AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog)
+                    .setTitle("Delete \"$name\"?")
+                    .setMessage("The collection is removed. Nothing you watched is affected.")
+                    .setPositiveButton("Delete") { _, _ ->
+                        Collections.delete(this, name)
+                        buildSection()
+                    }
+                    .setNegativeButton("Keep", null)
+                    .show()
+            }
+            .setNegativeButton("Close", null)
+            .show()
+    }
+
+    /** items in a hand-built collection; each opens the right page for its kind */
+    private inner class CollectionAdapter(private val items: List<Collections.Item>) :
+        RecyclerView.Adapter<CollectionAdapter.VH>() {
+        inner class VH(v: View) : RecyclerView.ViewHolder(v) {
+            val poster: ImageView = v.findViewById(R.id.poster)
+            val chip: TextView = v.findViewById(R.id.chip)
+        }
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) =
+            VH(layoutInflater.inflate(R.layout.item_poster, parent, false))
+        override fun getItemCount() = items.size
+        override fun onBindViewHolder(holder: VH, position: Int) {
+            val e = items[position]
+            Ui.loadImage(holder.poster, e.poster, 4f, R.drawable.placeholder_poster)
+            holder.chip.text = when (e.kind) { "movie" -> "FILM"; "enseries" -> "SERIES"; else -> "TÜRK" }
+            holder.chip.setBackgroundResource(R.drawable.chip_gold)
+            holder.chip.setTextColor(resources.getColor(R.color.accent_dark))
+            holder.chip.visibility = View.VISIBLE
+            val asMovie = Api.EnMovie(id = e.id, name = e.name, poster = e.poster, year = e.year,
+                background = e.background)
+            Ui.focusLift(holder.itemView)
+            holder.itemView.setOnClickListener {
+                when (e.kind) {
+                    "movie" -> openMovie(asMovie, autoplay = false)
+                    "enseries" -> openEnSeries(asMovie)
+                    else -> openSeries(seriesById[e.id] ?: Api.Series(e.id, e.name, e.poster, null, e.background))
+                }
+            }
+        }
+    }
 
     /**
      * Placeholders first so the order is fixed, then fill them from a small

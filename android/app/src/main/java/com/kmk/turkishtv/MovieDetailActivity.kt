@@ -65,6 +65,12 @@ class MovieDetailActivity : Activity() {
             Toast.makeText(this, if (nowIn) "Added to My List" else "Removed from My List", Toast.LENGTH_SHORT).show()
         }
 
+        findViewById<TextView>(R.id.mCollection).setOnClickListener {
+            val m = movie ?: return@setOnClickListener
+            CollectionPicker.show(this, Collections.Item("movie", imdbId, m.name, m.poster, background,
+                meta?.optString("year") ?: m.year))
+        }
+
         findViewById<TextView>(R.id.mReviews).setOnClickListener {
             status.text = "Loading reviews…"
             Extras.loadReviews(this, imdbId, movie?.name ?: "", meta?.optString("imdbRating")) {
@@ -94,6 +100,25 @@ class MovieDetailActivity : Activity() {
                 if (isFinishing) return@runOnUiThread
                 trailerId = yt
                 findViewById<TextView>(R.id.mTrailer).visibility = View.VISIBLE
+            }
+
+            // part of a franchise? offer the whole set
+            val col = try { Api.collectionOf(imdbId) } catch (e: Exception) { null }
+            if (col != null) runOnUiThread {
+                if (isFinishing) return@runOnUiThread
+                val btn = findViewById<TextView>(R.id.mCollection)
+                btn.text = "◈  ${col.second.removeSuffix(" Collection")}"
+                btn.setOnClickListener {
+                    startActivity(Intent(this, SpinActivity::class.java)
+                        .putExtra("tmdbCollectionId", col.first)
+                        .putExtra("collectionTitle", col.second))
+                }
+                btn.setOnLongClickListener {
+                    val m = movie ?: return@setOnLongClickListener true
+                    CollectionPicker.show(this, Collections.Item("movie", imdbId, m.name, m.poster,
+                        background, meta?.optString("year") ?: m.year))
+                    true
+                }
             }
 
             if (autoplay) runOnUiThread { if (!isFinishing) findSources(pickBest = true) }

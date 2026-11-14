@@ -470,6 +470,56 @@ app.get("/en/list/:id", async (req, res) => {
     }
 });
 
+// ---------------------------------------------------------------------------
+// Collections: franchises (TMDB collections, or a query where TMDB has no
+// single collection - Marvel being the obvious one).
+// ---------------------------------------------------------------------------
+const collections = require("./collections");
+
+app.get("/en/collections", (req, res) => {
+    res.setHeader("Cache-Control", "public, max-age=3600");
+    res.json({ collections: collections.catalogue() });
+});
+
+app.get("/en/collection/:id", async (req, res) => {
+    try {
+        const f = collections.franchise(req.params.id);
+        if (!f) return res.status(404).json({ error: "no such collection" });
+        const out = f.collection
+            ? await tmdb.collectionFilms(f.collection)
+            : { title: f.title, suggestions: await tmdb.discover(f.discover, "col:" + f.id) };
+        res.setHeader("Cache-Control", "public, max-age=86400");
+        res.json({ id: f.id, title: f.title, suggestions: out.suggestions });
+    } catch (e) {
+        res.status(502).json({ error: e.message });
+    }
+});
+
+// which franchise a film belongs to - the movie page offers "the whole set"
+app.get("/en/collection-of/movie/:imdbId", async (req, res) => {
+    try {
+        if (!/^tt\d+$/.test(req.params.imdbId)) return res.status(400).json({ error: "bad id" });
+        const c = await tmdb.collectionOfImdb(req.params.imdbId);
+        res.setHeader("Cache-Control", "public, max-age=86400");
+        res.json(c || {});
+    } catch (e) {
+        res.status(502).json({ error: e.message });
+    }
+});
+
+// a TMDB collection by its numeric id (what collection-of returns)
+app.get("/en/tmdb-collection/:collectionId", async (req, res) => {
+    try {
+        const id = parseInt(req.params.collectionId);
+        if (!(id > 0)) return res.status(400).json({ error: "bad id" });
+        const out = await tmdb.collectionFilms(id);
+        res.setHeader("Cache-Control", "public, max-age=86400");
+        res.json({ id: String(id), title: out.title, suggestions: out.suggestions });
+    } catch (e) {
+        res.status(502).json({ error: e.message });
+    }
+});
+
 app.get("/en/person/:query", async (req, res) => {
     try {
         const out = await tmdb.searchPeople(req.params.query);

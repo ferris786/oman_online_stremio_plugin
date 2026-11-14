@@ -431,6 +431,32 @@ function reviewsForImdb(imdbId) {
     });
 }
 
+/**
+ * A TMDB franchise collection, in release order. Unlike /discover these
+ * come back as a complete ordered set, which is what a franchise means.
+ */
+function collectionFilms(collectionId) {
+    return memo(suggestCache, `col:${collectionId}`, PERSON_TTL, async () => {
+        const d = await get(`/collection/${collectionId}`);
+        const parts = (d.parts || [])
+            .filter(m => m.poster_path)
+            .sort((a, b) => String(a.release_date || "9999").localeCompare(String(b.release_date || "9999")));
+        return { title: d.name || null, suggestions: parts.map(movieSuggestion) };
+    });
+}
+
+/** the franchise a given film belongs to, if any (shown on the movie page) */
+function collectionOfImdb(imdbId) {
+    return memo(suggestCache, `colof:${imdbId}`, PERSON_TTL, async () => {
+        const found = await get(`/find/${imdbId}`, { external_source: "imdb_id" });
+        const movie = (found.movie_results || [])[0];
+        if (!movie) return null;
+        const d = await get(`/movie/${movie.id}`);
+        const c = d.belongs_to_collection;
+        return c ? { collectionId: c.id, title: c.name } : null;
+    });
+}
+
 /** "Because you watched": TMDB's recommendations for a film, by IMDb id */
 function recommendationsForImdb(imdbId) {
     return memo(suggestCache, `rec:${imdbId}`, SUGGEST_TTL, async () => {
@@ -459,5 +485,6 @@ function trailerForImdb(imdbId) {
 module.exports = {
     resolveId, show, episodes, enrichAll, absToSeasonEp, TMDB_IDS,
     suggestMovies, imdbIdOf, searchPeople, personMovies,
-    reviewsForImdb, trailerForImdb, pickTrailer, discover, recommendationsForImdb
+    reviewsForImdb, trailerForImdb, pickTrailer, discover, recommendationsForImdb,
+    collectionFilms, collectionOfImdb
 };

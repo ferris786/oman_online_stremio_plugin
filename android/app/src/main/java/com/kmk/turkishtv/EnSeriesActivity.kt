@@ -88,6 +88,16 @@ class EnSeriesActivity : Activity() {
         btnResume.text = "▶  Play"
         btnResume.setOnClickListener { target?.let { play(it) } }
         btnSeason.setOnClickListener { showSeasonMenu() }
+        findViewById<TextView>(R.id.btnCollection).apply {
+            visibility = View.VISIBLE
+            setOnClickListener {
+                val m = meta
+                CollectionPicker.show(this@EnSeriesActivity, Collections.Item("enseries", imdbId,
+                    m?.name ?: seriesName, m?.poster ?: intent.getStringExtra("poster"),
+                    m?.background ?: intent.getStringExtra("background"), m?.year))
+            }
+        }
+
         btnMyList.visibility = View.VISIBLE
         paintMyList()
         btnMyList.setOnClickListener {

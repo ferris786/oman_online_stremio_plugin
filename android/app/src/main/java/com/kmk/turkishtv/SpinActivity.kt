@@ -58,8 +58,29 @@ class SpinActivity : Activity() {
         keepBtn = findViewById(R.id.keepList)
         grid.layoutManager = GridLayoutManager(this, 6)
 
-        findViewById<TextView>(R.id.spinAgain).setOnClickListener { spin() }
+        findViewById<TextView>(R.id.spinAgain).setOnClickListener {
+            if (intent.getStringExtra("tmdbCollectionId") != null) finish() else spin()
+        }
         keepBtn.setOnClickListener { toggleKeep() }
+
+        // opened straight onto a franchise from a movie page - no spin
+        val colId = intent.getStringExtra("tmdbCollectionId")
+        if (colId != null) {
+            val colTitle = intent.getStringExtra("collectionTitle") ?: "Collection"
+            spinName.text = colTitle
+            Thread {
+                val full = try { Api.tmdbCollection(colId) } catch (e: Exception) { null }
+                runOnUiThread {
+                    if (isFinishing) return@runOnUiThread
+                    if (full == null || full.films.isEmpty()) {
+                        Toast.makeText(this, "Could not load $colTitle", Toast.LENGTH_LONG).show()
+                        finish(); return@runOnUiThread
+                    }
+                    showList(full)
+                }
+            }.start()
+            return
+        }
 
         spinName.text = "Loading the reel…"
         Thread {
@@ -144,20 +165,26 @@ class SpinActivity : Activity() {
                     spin()
                     return@runOnUiThread
                 }
-                landed = full
-                resultTitle.text = full.title
-                resultSub.text = listOfNotNull(full.subtitle, "${full.films.size} films").joinToString("   ·   ")
-                grid.adapter = FilmAdapter(full.films)
-                stage.visibility = View.GONE
-                result.visibility = View.VISIBLE
-                result.alpha = 0f
-                result.animate().alpha(1f).setDuration(260).start()
-                full.films.firstOrNull()?.background?.let {
-                    Ui.loadBackdrop(findViewById(R.id.spinBackdrop), it)
-                }
-                grid.post { grid.getChildAt(0)?.requestFocus() }
+                showList(full)
             }
         }.start()
+    }
+
+    /** render a loaded list: header, films, actions */
+    private fun showList(full: Api.MovieList) {
+        landed = full
+        resultTitle.text = full.title
+        resultSub.text = listOfNotNull(full.subtitle, "${full.films.size} films").joinToString("   ·   ")
+        grid.adapter = FilmAdapter(full.films)
+        paintKeep(full.id)
+        stage.visibility = View.GONE
+        result.visibility = View.VISIBLE
+        result.alpha = 0f
+        result.animate().alpha(1f).setDuration(260).start()
+        full.films.firstOrNull()?.background?.let {
+            Ui.loadBackdrop(findViewById(R.id.spinBackdrop), it)
+        }
+        grid.post { grid.getChildAt(0)?.requestFocus() }
     }
 
     // ---------------------------------------------------------- keeping
@@ -168,6 +195,10 @@ class SpinActivity : Activity() {
 
     private fun toggleKeep() {
         val l = landed ?: return
+        if (intent.getStringExtra("tmdbCollectionId") != null) {
+            Toast.makeText(this, "Franchises live in the Collections tab already", Toast.LENGTH_LONG).show()
+            return
+        }
         if (KeptLists.has(this, l.id)) {
             KeptLists.remove(this, l.id)
             Toast.makeText(this, "Removed from your home screen", Toast.LENGTH_SHORT).show()

@@ -312,6 +312,38 @@ object Api {
         return out
     }
 
+    // ---------- Collections (franchises, from the server) ----------
+
+    fun collectionCatalogue(): List<MovieList> {
+        val arr = JSONObject(get("/en/collections")).optJSONArray("collections") ?: return emptyList()
+        val out = ArrayList<MovieList>(arr.length())
+        for (i in 0 until arr.length()) {
+            val o = arr.getJSONObject(i)
+            out.add(MovieList(o.optString("id"), o.optString("title"), null))
+        }
+        return out
+    }
+
+    fun collection(id: String): MovieList {
+        val body = get("/en/collection/" + encode(id))
+        val j = JSONObject(body)
+        return MovieList(j.optString("id", id), j.optString("title"), null, parseSuggestions(body))
+    }
+
+    /** the TMDB collection a film belongs to, if any */
+    fun collectionOf(imdbId: String): Pair<String, String>? {
+        val j = JSONObject(get("/en/collection-of/movie/" + encode(imdbId)))
+        val id = j.optInt("collectionId", 0)
+        val title = j.str("title")
+        return if (id > 0 && title != null) Pair(id.toString(), title) else null
+    }
+
+    fun tmdbCollection(collectionId: String): MovieList {
+        val body = get("/en/tmdb-collection/" + encode(collectionId))
+        val j = JSONObject(body)
+        return MovieList(j.optString("id", collectionId), j.optString("title"), null, parseSuggestions(body))
+    }
+
     fun movieList(id: String): MovieList {
         val body = get("/en/list/" + encode(id))
         val j = JSONObject(body)
