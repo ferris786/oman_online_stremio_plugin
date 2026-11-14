@@ -33,8 +33,23 @@ class PlayerActivity : Activity() {
 
     companion object {
         const val SEEK_STEP_MS = 10_000L
+
+        /**
+         * Held-key seek ramp. A tap moves 10 s; keep the key down and the
+         * step grows, so crossing an hour does not mean forty presses.
+         * Indexed by the key's repeat count.
+         */
+        fun seekStepFor(repeat: Int): Long = when {
+            repeat < 3 -> 10_000L        // taps and the first moments
+            repeat < 8 -> 30_000L
+            repeat < 14 -> 60_000L
+            repeat < 22 -> 180_000L
+            else -> 300_000L             // 5 min a tick once properly held
+        }
         /** rapid ◀ ▶ presses are merged; the seek fires this long after the last one */
         const val SEEK_COMMIT_MS = 450L
+        /** while a key is held, seek at least this often so the picture keeps up */
+        const val SEEK_KEEPUP_MS = 2_000L
         /** no buffering panel for this long after a seek - it would just flash */
         const val SEEK_SETTLE_MS = 1_500L
         /** brief stalls are normal on these CDNs; only show the panel if it persists */
@@ -67,6 +82,7 @@ class PlayerActivity : Activity() {
     private var pendingSeekMs = 0L
     private var seekBaseMs = -1L
     private var lastSeekAt = 0L
+    private var seekStartedAt = 0L
 
     // diagnostics state
     private var decoderName = "-"
@@ -987,21 +1003,36 @@ class PlayerActivity : Activity() {
      */
     private fun seekBy(deltaMs: Long) {
         val dur = player.duration
-        if (seekBaseMs < 0) seekBaseMs = player.currentPosition
+        if (seekBaseMs < 0) {
+            seekBaseMs = player.currentPosition
+            seekStartedAt = 0
+        }
         val maxPos = if (dur > 0) dur - 1000 else Long.MAX_VALUE
         pendingSeekMs = (seekBaseMs + pendingSeekMs + deltaMs).coerceIn(0, maxPos) - seekBaseMs
         lastSeekAt = System.currentTimeMillis()
 
         val target = seekBaseMs + pendingSeekMs
         val sign = if (pendingSeekMs >= 0) "+" else "-"
-        val offset = Math.abs(pendingSeekMs) / 1000
-        seekIndicator.text = skinCase("${Ui.msLabel(target)}   ($sign${offset}s)")
+        val off = Math.abs(pendingSeekMs)
+        val offLabel = if (off >= 60_000) "${off / 60_000}m ${(off % 60_000) / 1000}s" else "${off / 1000}s"
+        val rate = if (deltaMs >= 60_000) "   ▸ ${deltaMs / 60_000} min a step" else ""
+        seekIndicator.text = skinCase("${Ui.msLabel(target)}   ($sign$offLabel)$rate")
         seekIndicator.visibility = View.VISIBLE
         showBuffering(false)
         playerView.showController()
 
+        // A held key keeps pushing the commit back, so on a long hold the
+        // picture would stay frozen until release. Commit every couple of
+        // seconds as well, so it keeps up without seeking on every tick.
+        val now = System.currentTimeMillis()
+        if (seekStartedAt <= 0) seekStartedAt = now
         playerView.removeCallbacks(commitSeek)
-        playerView.postDelayed(commitSeek, SEEK_COMMIT_MS)
+        if (now - seekStartedAt >= SEEK_KEEPUP_MS) {
+            seekStartedAt = now
+            playerView.post(commitSeek)
+        } else {
+            playerView.postDelayed(commitSeek, SEEK_COMMIT_MS)
+        }
     }
 
     private val commitSeek = Runnable {
@@ -1031,7 +1062,8 @@ class PlayerActivity : Activity() {
                 // to also scrub when the controller was showing, so the two
                 // mechanisms fought over the same press.
                 KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> {
-                    seekBy(if (event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT) -SEEK_STEP_MS else SEEK_STEP_MS)
+                    val step = seekStepFor(event.repeatCount)
+                    seekBy(if (event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT) -step else step)
                     return true
                 }
                 // ▲ sources / ▼ tracks work straight from a hidden controller;

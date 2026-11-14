@@ -470,6 +470,34 @@ app.get("/en/list/:id", async (req, res) => {
     }
 });
 
+/**
+ * Trailer page, served from THIS origin so the YouTube embed works.
+ *
+ * The app used to build the same HTML locally with
+ * loadDataWithBaseURL("https://www.youtube.com", ...). The iframe's parent
+ * then has no real origin, and YouTube's embed refuses to play - which is
+ * the "it opens a YouTube page and says it can't play" report.
+ * Serving the page over real HTTPS gives the embed a legitimate origin and
+ * referrer.
+ *
+ * Extracting the stream server-side is NOT an option: YouTube answers
+ * "Sign in to confirm you're not a bot" (LOGIN_REQUIRED) to this VPS's
+ * datacenter IP, which would need a PoToken and a headless browser.
+ */
+app.get("/trailer/:ytId", (req, res) => {
+    const id = String(req.params.ytId || "");
+    if (!/^[A-Za-z0-9_-]{6,20}$/.test(id)) return res.status(400).send("bad id");
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.setHeader("Cache-Control", "public, max-age=3600");
+    res.end(`<!doctype html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Trailer</title>
+<style>html,body{margin:0;height:100%;background:#000;overflow:hidden}
+iframe{border:0;width:100%;height:100%;display:block}</style></head>
+<body><iframe src="https://www.youtube-nocookie.com/embed/${id}?autoplay=1&playsinline=1&rel=0&modestbranding=1&fs=1&iv_load_policy=3"
+  allow="autoplay; encrypted-media; fullscreen" allowfullscreen></iframe></body></html>`);
+});
+
 // ---------------------------------------------------------------------------
 // Collections: franchises (TMDB collections, or a query where TMDB has no
 // single collection - Marvel being the obvious one).

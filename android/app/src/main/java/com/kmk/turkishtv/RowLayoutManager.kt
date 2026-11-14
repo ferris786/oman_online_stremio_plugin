@@ -21,9 +21,11 @@ class RowLayoutManager(context: Context) :
 
     override fun onInterceptFocusSearch(focused: View, direction: Int): View? {
         val goingRight = direction == View.FOCUS_RIGHT || direction == View.FOCUS_FORWARD
-        if (goingRight) {
+        if (goingRight && itemCount > 0) {
+            // During a fast scroll the focused view can be mid-recycle and
+            // report NO_POSITION; blocking on that would strand focus.
             val pos = getPosition(focused)
-            if (pos == itemCount - 1) return focused   // swallow it: stay put
+            if (pos != RecyclerView.NO_POSITION && pos >= itemCount - 1) return focused
         }
         return super.onInterceptFocusSearch(focused, direction)
     }

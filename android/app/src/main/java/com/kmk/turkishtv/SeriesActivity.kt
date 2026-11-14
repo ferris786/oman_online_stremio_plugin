@@ -166,6 +166,8 @@ class SeriesActivity : Activity() {
         val id = ++sectionLoadId
         rowsContainer.removeAllViews()
         keptRows.clear()
+        lastFocusedRow = null
+        lastSnapY = Int.MIN_VALUE
         myListRow = null; continueRow = null; becauseRow = null; newRow = null; seriesRow = null
         becauseFor = null
         snapTo(0)
@@ -613,12 +615,18 @@ class SeriesActivity : Activity() {
         root.viewTreeObserver.addOnGlobalFocusChangeListener { _, newFocus ->
             if (newFocus == null) return@addOnGlobalFocusChangeListener
             val row = rowOf(newFocus)
+            // Only react when the focused ROW changes. Moving along a row
+            // fires this on every poster, and re-issuing the same vertical
+            // smooth-scroll each time is what made fast scrolling lurch.
             if (row != null) {
+                if (row === lastFocusedRow) return@addOnGlobalFocusChangeListener
+                lastFocusedRow = row
                 val idx = rowsContainer.indexOfChild(row)
                 val firstVisible = (0 until rowsContainer.childCount).firstOrNull { rowsContainer.getChildAt(it).visibility == View.VISIBLE }
                 if (idx == firstVisible) snapTo(0)
                 else snapTo(rowsScroll.paddingTop + row.top - Ui.dp(this, 30))
             } else if (isInside(newFocus, billboard) || isInside(newFocus, findViewById(R.id.rail))) {
+                lastFocusedRow = null
                 snapTo(0)
             }
         }
@@ -643,7 +651,12 @@ class SeriesActivity : Activity() {
         return false
     }
 
+    private var lastFocusedRow: View? = null
+    private var lastSnapY = Int.MIN_VALUE
+
     private fun snapTo(y: Int) {
+        if (y == lastSnapY) return
+        lastSnapY = y
         if (rowsScroll.scrollY != y) rowsScroll.smoothScrollTo(0, y)
         val hide = y > 0
         if (hide != billboardHidden) {
