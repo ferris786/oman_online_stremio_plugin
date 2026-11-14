@@ -23,6 +23,7 @@ object WatchState {
         val thumb: String? = null, val backdrop: String? = null
     ) {
         val isMovie: Boolean get() = videoId.startsWith("movie:")
+        val isEnSeries: Boolean get() = videoId.startsWith("enseries:")
         val progressPct: Int get() = if (durationMs > 0) ((positionMs * 100) / durationMs).toInt().coerceIn(0, 100) else 0
         /** treated as finished once ≥ 93% was watched */
         val isFinished: Boolean get() = durationMs > 0 && positionMs >= durationMs * 93 / 100

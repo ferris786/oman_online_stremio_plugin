@@ -79,6 +79,12 @@
             android:screenOrientation="landscape" />
 
         <activity
+            android:name=".EnSeriesActivity"
+            android:exported="false"
+            android:launchMode="singleTop"
+            android:screenOrientation="landscape" />
+
+        <activity
             android:name=".SpinActivity"
             android:exported="false"
             android:screenOrientation="landscape" />

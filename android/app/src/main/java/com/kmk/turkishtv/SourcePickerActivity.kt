@@ -97,6 +97,11 @@ class SourcePickerActivity : Activity() {
                 putExtra("videoTitle", intent.getStringExtra("videoTitle"))
                 putExtra("streamsJson", streamsJson)
                 putExtra("startIndex", position)
+                // English series: the player needs these for next-episode handoff
+                for (k in listOf("seriesId", "seriesName", "seriesBackdrop", "seriesPoster"))
+                    intent.getStringExtra(k)?.let { putExtra(k, it) }
+                if (intent.hasExtra("season")) putExtra("season", intent.getIntExtra("season", 0))
+                if (intent.hasExtra("episode")) putExtra("episode", intent.getIntExtra("episode", 0))
             })
             return
         }
@@ -124,7 +129,8 @@ class SourcePickerActivity : Activity() {
         val dlg = AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog)
             .setMessage("Resolving…").setCancelable(false).show()
         Thread {
-            val link = Torbox.resolveStream(key, st.optString("hash", ""), st.optString("dn", ""))
+            val link = Torbox.resolveStream(key, st.optString("hash", ""), st.optString("dn", ""),
+                st.optInt("fileIdx", -1), st.optString("epTag", ""))
             runOnUiThread {
                 if (isFinishing) return@runOnUiThread
                 dlg.dismiss()
@@ -145,6 +151,7 @@ class SourcePickerActivity : Activity() {
     }
 
     private fun recordHistory() {
+        if (intent.hasExtra("seriesId")) return   // the series page already recorded the episode
         val videoId = intent.getStringExtra("videoId") ?: return
         val name = intent.getStringExtra("movieTitle") ?: return
         val bg = intent.getStringExtra("background")

@@ -43,9 +43,12 @@ class SeriesActivity : Activity() {
     private var catalog: List<Api.Series> = emptyList()
     private var seriesById: Map<String, Api.Series> = emptyMap()
 
+    private lateinit var myListRow: Row
     private lateinit var continueRow: Row
+    private lateinit var becauseRow: Row
     private lateinit var newRow: Row
     private lateinit var seriesRow: Row
+    private var becauseFor: String? = null
 
     /** where kept-list rows are inserted, and which ones are already shown */
     private var keptHost = 0
@@ -59,6 +62,7 @@ class SeriesActivity : Activity() {
     private sealed class Spot {
         data class S(val s: Api.Series) : Spot()
         data class M(val m: Api.EnMovie) : Spot()
+        data class E(val m: Api.EnMovie) : Spot()      // English series
         data class C(val h: WatchState.HistoryEntry) : Spot()
     }
     private var spot: Spot? = null
@@ -90,7 +94,9 @@ class SeriesActivity : Activity() {
         bbSecondary.setOnClickListener { onSecondary() }
 
         // rows in display order; empty ones stay hidden
+        myListRow = addRow("My List")
         continueRow = addRow("Continue Watching")
+        becauseRow = addRow("Because you watched")
         newRow = addRow("New this week")
         seriesRow = addRow("Turkish Series")
         keptHost = rowsContainer.childCount   // kept lists are inserted here
@@ -122,7 +128,9 @@ class SeriesActivity : Activity() {
         super.onResume()
         if (catalog.isNotEmpty()) {
             refreshKeptRows()
+            fillMyListRow()
             fillContinueRow()
+            fillBecauseRow()
             // progress may have changed while watching
             (spot as? Spot.C)?.let { c ->
                 WatchState.history(this).firstOrNull { it.videoId == c.h.videoId }?.let { show(Spot.C(it)) }
@@ -250,7 +258,9 @@ class SeriesActivity : Activity() {
                     catalog = series
                     seriesById = series.associateBy { it.id }
                     refreshKeptRows()
+                    fillMyListRow()
                     fillContinueRow()
+                    fillBecauseRow()
                     fillNewRow()
                     seriesRow.list.adapter = SeriesAdapter(series, false)
                     seriesRow.view.visibility = View.VISIBLE
@@ -274,6 +284,29 @@ class SeriesActivity : Activity() {
         continueRow.view.visibility = if (entries.isEmpty()) View.GONE else View.VISIBLE
     }
 
+    private fun fillMyListRow() {
+        val entries = MyList.all(this)
+        myListRow.list.adapter = MyListAdapter(entries)
+        myListRow.view.visibility = if (entries.isEmpty()) View.GONE else View.VISIBLE
+    }
+
+    /** "Because you watched X": recommendations from the last film finished */
+    private fun fillBecauseRow() {
+        val last = WatchState.history(this).firstOrNull { it.isMovie && it.isFinished } ?: return
+        val imdbId = last.videoId.removePrefix("movie:")
+        if (becauseFor == imdbId) return
+        becauseFor = imdbId
+        Thread {
+            val (title, films) = try { Api.similar(imdbId) } catch (e: Exception) { Pair(null, emptyList()) }
+            runOnUiThread {
+                if (isFinishing || films.isEmpty()) return@runOnUiThread
+                becauseRow.header.text = "Because you watched ${title ?: last.seriesName}"
+                becauseRow.list.adapter = SuggestionAdapter(films)
+                becauseRow.view.visibility = View.VISIBLE
+            }
+        }.start()
+    }
+
     private fun fillNewRow() {
         val fresh = catalog.filter { it.airedWithinDays(Ui.NEW_WINDOW_DAYS) }
             .sortedByDescending { it.lastAired ?: "" }
@@ -291,10 +324,18 @@ class SeriesActivity : Activity() {
      * filter let a fifth of the row through wrongly.
      */
     private fun loadMovieRows() {
-        data class Spec(val title: String, val fetch: () -> List<Api.EnMovie>)
+        data class Spec(val title: String, val tv: Boolean = false, val fetch: () -> List<Api.EnMovie>)
         fun genre(g: String) = Spec(g) { Api.enCatalog("top", 0, g) }
 
         val wanted = listOf(
+            Spec("Popular Series", tv = true) { Api.enSeriesCatalog("top", 0) },
+            Spec("New Series", tv = true) { Api.enSeriesCatalog("year", 0) },
+            Spec("Featured Series", tv = true) { Api.enSeriesCatalog("imdbRating", 0) },
+            Spec("Drama Series", tv = true) { Api.enSeriesCatalog("top", 0, "Drama") },
+            Spec("Comedy Series", tv = true) { Api.enSeriesCatalog("top", 0, "Comedy") },
+            Spec("Crime Series", tv = true) { Api.enSeriesCatalog("top", 0, "Crime") },
+            Spec("Sci-Fi Series", tv = true) { Api.enSeriesCatalog("top", 0, "Sci-Fi") },
+            Spec("Animated Series", tv = true) { Api.enSeriesCatalog("top", 0, "Animation") },
             Spec("Just added") { Api.enLatestAdded() },
             Spec("New releases") { Api.enCatalog("year", 0) },
             Spec("Popular Movies") { Api.enCatalog("top", 0) },
@@ -325,7 +366,7 @@ class SeriesActivity : Activity() {
                 if (movies.isEmpty()) return@execute
                 runOnUiThread {
                     if (isFinishing) return@runOnUiThread
-                    slots[i].list.adapter = MovieAdapter(movies)
+                    slots[i].list.adapter = if (spec.tv) EnSeriesAdapter(movies) else MovieAdapter(movies)
                     slots[i].view.visibility = View.VISIBLE
                 }
             }
@@ -334,7 +375,7 @@ class SeriesActivity : Activity() {
     }
 
     private fun focusFirstItem(attempt: Int = 0) {
-        val row = listOf(continueRow, newRow, seriesRow).firstOrNull { it.view.visibility == View.VISIBLE } ?: return
+        val row = listOf(myListRow, continueRow, newRow, seriesRow).firstOrNull { it.view.visibility == View.VISIBLE } ?: return
         row.list.post {
             val child = row.list.getChildAt(0)
             if (child != null) child.requestFocus()
@@ -439,6 +480,7 @@ class SeriesActivity : Activity() {
                 title = h.seriesName
                 logo = series?.logo
                 bg = h.backdrop ?: series?.background ?: h.thumb ?: h.poster
+                if (h.isEnSeries) chip = "CONTINUE WATCHING"
                 synopsis = series?.description
                 meta = if (h.isMovie) listOfNotNull("Movie", "${h.minutesLeft} min left".takeIf { h.durationMs > 0 }).joinToString("  ·  ")
                 else listOfNotNull("Season ${h.season}  ·  Episode ${h.episode}",
@@ -457,6 +499,21 @@ class SeriesActivity : Activity() {
                     m.genres.take(3).joinToString(", ").takeIf { it.isNotEmpty() }).joinToString("  ·  ")
                 primary = "▶  Play"
                 secondary = "ⓘ  Details"
+            }
+            is Spot.E -> {
+                val m = s.m
+                title = m.name
+                bg = m.background ?: m.poster
+                synopsis = m.description
+                meta = listOfNotNull("Series", m.year, m.rating?.let { "★ $it" },
+                    m.genres.take(3).joinToString(", ").takeIf { it.isNotEmpty() }).joinToString("  ·  ")
+                val last = WatchState.lastForSeries(this, EnSeriesActivity.PREFIX + m.id)
+                primary = when {
+                    last == null -> "▶  Start watching"
+                    last.isFinished -> "▶  Play next episode"
+                    else -> "▶  Resume  ·  S${last.season} E${last.episode}"
+                }
+                secondary = "ⓘ  Episodes"
             }
         }
 
@@ -495,8 +552,16 @@ class SeriesActivity : Activity() {
                 val last = WatchState.lastForSeries(this, s.s.id)
                 if (last != null && !last.isFinished) playHistory(last) else openSeries(s.s)
             }
-            is Spot.C -> if (s.h.isMovie) openMovieFromHistory(s.h, autoplay = true) else playHistory(s.h)
+            is Spot.C -> when {
+                s.h.isMovie -> openMovieFromHistory(s.h, autoplay = true)
+                s.h.isEnSeries -> openEnSeriesFromHistory(s.h, resume = true)
+                else -> playHistory(s.h)
+            }
             is Spot.M -> openMovie(s.m, autoplay = true)
+            is Spot.E -> {
+                val last = WatchState.lastForSeries(this, EnSeriesActivity.PREFIX + s.m.id)
+                openEnSeries(s.m, autoplayId = last?.takeIf { !it.isFinished }?.videoId?.removePrefix(EnSeriesActivity.PREFIX))
+            }
             null -> {}
         }
     }
@@ -504,9 +569,13 @@ class SeriesActivity : Activity() {
     private fun onSecondary() {
         when (val s = spot) {
             is Spot.S -> openSeries(s.s)
-            is Spot.C -> if (s.h.isMovie) openMovieFromHistory(s.h, autoplay = false)
-                else openSeries(seriesById[s.h.seriesId] ?: Api.Series(s.h.seriesId, s.h.seriesName, s.h.poster, null))
+            is Spot.C -> when {
+                s.h.isMovie -> openMovieFromHistory(s.h, autoplay = false)
+                s.h.isEnSeries -> openEnSeriesFromHistory(s.h, resume = false)
+                else -> openSeries(seriesById[s.h.seriesId] ?: Api.Series(s.h.seriesId, s.h.seriesName, s.h.poster, null))
+            }
             is Spot.M -> openMovie(s.m, autoplay = false)
+            is Spot.E -> openEnSeries(s.m)
             null -> {}
         }
     }
@@ -544,6 +613,26 @@ class SeriesActivity : Activity() {
             putExtra("year", m.year)
             putExtra("background", m.background)
             putExtra("autoplay", autoplay)
+        })
+    }
+
+    private fun openEnSeries(m: Api.EnMovie, autoplayId: String? = null) {
+        startActivity(Intent(this, EnSeriesActivity::class.java).apply {
+            putExtra("imdbId", m.id)
+            putExtra("name", m.name)
+            putExtra("poster", m.poster)
+            putExtra("background", m.background)
+            autoplayId?.let { putExtra("autoplayId", it) }
+        })
+    }
+
+    private fun openEnSeriesFromHistory(h: WatchState.HistoryEntry, resume: Boolean) {
+        startActivity(Intent(this, EnSeriesActivity::class.java).apply {
+            putExtra("imdbId", h.seriesId.removePrefix(EnSeriesActivity.PREFIX))
+            putExtra("name", h.seriesName)
+            putExtra("poster", h.poster)
+            putExtra("background", h.backdrop)
+            if (resume) putExtra("autoplayId", h.videoId.removePrefix(EnSeriesActivity.PREFIX))
         })
     }
 
@@ -612,6 +701,66 @@ class SeriesActivity : Activity() {
         }
     }
 
+    private inner class EnSeriesAdapter(private val items: List<Api.EnMovie>) :
+        RecyclerView.Adapter<EnSeriesAdapter.VH>() {
+        inner class VH(v: View) : RecyclerView.ViewHolder(v) {
+            val poster: ImageView = v.findViewById(R.id.poster)
+        }
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) =
+            VH(layoutInflater.inflate(R.layout.item_poster, parent, false))
+        override fun getItemCount() = items.size
+        override fun onBindViewHolder(holder: VH, position: Int) {
+            val m = items[position]
+            Ui.loadImage(holder.poster, m.poster, 4f, R.drawable.placeholder_poster)
+            holder.itemView.setOnFocusChangeListener { v, f ->
+                val sc = if (f) 1.08f else 1f
+                v.animate().scaleX(sc).scaleY(sc).setDuration(140).start()
+                v.translationZ = if (f) 14f else 0f
+                if (f) show(Spot.E(m))
+            }
+            holder.itemView.setOnClickListener { openEnSeries(m) }
+        }
+    }
+
+    /** My List mixes Turkish series, English movies and English series */
+    private inner class MyListAdapter(private val items: List<MyList.Entry>) :
+        RecyclerView.Adapter<MyListAdapter.VH>() {
+        inner class VH(v: View) : RecyclerView.ViewHolder(v) {
+            val poster: ImageView = v.findViewById(R.id.poster)
+            val chip: TextView = v.findViewById(R.id.chip)
+        }
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) =
+            VH(layoutInflater.inflate(R.layout.item_poster, parent, false))
+        override fun getItemCount() = items.size
+        override fun onBindViewHolder(holder: VH, position: Int) {
+            val e = items[position]
+            Ui.loadImage(holder.poster, e.poster, 4f, R.drawable.placeholder_poster)
+            holder.chip.text = when (e.kind) { "movie" -> "FILM"; "enseries" -> "SERIES"; else -> "TÜRK" }
+            holder.chip.setBackgroundResource(R.drawable.chip_gold)
+            holder.chip.setTextColor(resources.getColor(R.color.accent_dark))
+            holder.chip.visibility = View.VISIBLE
+            val asMovie = Api.EnMovie(id = e.id, name = e.name, poster = e.poster, year = e.year,
+                background = e.background, description = e.description)
+            holder.itemView.setOnFocusChangeListener { v, f ->
+                val sc = if (f) 1.08f else 1f
+                v.animate().scaleX(sc).scaleY(sc).setDuration(140).start()
+                v.translationZ = if (f) 14f else 0f
+                if (f) when (e.kind) {
+                    "movie" -> show(Spot.M(asMovie))
+                    "enseries" -> show(Spot.E(asMovie))
+                    else -> show(Spot.S(seriesById[e.id] ?: Api.Series(e.id, e.name, e.poster, e.description, e.background)))
+                }
+            }
+            holder.itemView.setOnClickListener {
+                when (e.kind) {
+                    "movie" -> openMovie(asMovie, autoplay = false)
+                    "enseries" -> openEnSeries(asMovie)
+                    else -> openSeries(seriesById[e.id] ?: Api.Series(e.id, e.name, e.poster, e.description, e.background))
+                }
+            }
+        }
+    }
+
     private inner class MovieAdapter(private val items: List<Api.EnMovie>) :
         RecyclerView.Adapter<MovieAdapter.VH>() {
         inner class VH(v: View) : RecyclerView.ViewHolder(v) {
@@ -651,6 +800,7 @@ class SeriesActivity : Activity() {
             holder.label.text = e.seriesName
             holder.sub.text = if (e.isMovie) (if (e.durationMs > 0) "${e.minutesLeft} min left" else "Movie")
                 else "S${e.season} E${e.episode}" + (if (e.durationMs > 0) "  ·  ${e.minutesLeft} min left" else "")
+            holder.label.text = e.seriesName
             holder.progress.progress = e.progressPct
             holder.progress.visibility = if (e.durationMs > 0) View.VISIBLE else View.INVISIBLE
             holder.itemView.setOnFocusChangeListener { v, f ->
@@ -660,7 +810,11 @@ class SeriesActivity : Activity() {
                 if (f) show(Spot.C(e))
             }
             holder.itemView.setOnClickListener {
-                if (e.isMovie) openMovieFromHistory(e, autoplay = true) else playHistory(e)
+                when {
+                    e.isMovie -> openMovieFromHistory(e, autoplay = true)
+                    e.isEnSeries -> openEnSeriesFromHistory(e, resume = true)
+                    else -> playHistory(e)
+                }
             }
         }
     }

@@ -28,8 +28,15 @@ data class MuxStream(
     val seeders: Int,
     val provider: String,       // YTS | TPB | ADDON
     val attrs: StreamAttrs,
-    var cached: Boolean = false
+    var cached: Boolean = false,
+    val fileIdx: Int = -1       // episode's file inside a season pack (Torrentio), else -1
 ) {
+    /** a whole-season or complete-series upload rather than one episode */
+    val isPack: Boolean get() = PACK_RE.containsMatchIn(name)
+
+    companion object {
+        private val PACK_RE = Regex("""\bS\d{1,2}(?!E\d)|\bSeason\s*\d|Complete\.?Series|\bS\d{2}-S\d{2}""", RegexOption.IGNORE_CASE)
+    }
     /** AIOStreams-style uniform chip title */
     fun formattedTitle(): String {
         val gb = sizeBytes / 1e9

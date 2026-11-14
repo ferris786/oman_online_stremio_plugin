@@ -81,7 +81,8 @@ class PlayerActivity : Activity() {
 
     data class PStream(val name: String, val title: String, val url: String,
                         val hash: String = "", val dn: String = "",
-                        val cached: Boolean = true, val encode: String = "")
+                        val cached: Boolean = true, val encode: String = "",
+                        val fileIdx: Int = -1, val epTag: String = "")
     private var streams: List<PStream> = emptyList()
     private var streamIndex = 0
     private var videoId: String = ""
@@ -93,6 +94,7 @@ class PlayerActivity : Activity() {
 
     // next-episode handoff
     private var nextEpisode: Api.Episode? = null
+    private var nextEn: Api.EnEpisode? = null
     private var allEpisodes: List<Api.Episode> = emptyList()
     private var nextPrefetched = false
     private var nextCancelled = false
@@ -134,6 +136,8 @@ class PlayerActivity : Activity() {
         setupOverlayVisibility()
         applyTitles()
         nextCard.setOnClickListener { playNext() }
+        loadNextEpisode()
+        loadSubtitles()
 
         // Pre-resolved streams (English movies resolved through TorBox) are
         // passed directly instead of hitting the addon /stream endpoint.
@@ -145,7 +149,8 @@ class PlayerActivity : Activity() {
                 val o = arr.getJSONObject(i)
                 list.add(PStream(o.optString("name"), o.optString("title"),
                     o.optString("url"), o.optString("hash", ""), o.optString("dn", ""),
-                    o.optBoolean("cached", true), o.optString("encode", "")))
+                    o.optBoolean("cached", true), o.optString("encode", ""),
+                    o.optInt("fileIdx", -1), o.optString("epTag", "")))
             }
             streams = list
             val startIdx = intent.getIntExtra("startIndex", 0)
@@ -179,18 +184,20 @@ class PlayerActivity : Activity() {
                 }
             }
         }.start()
-
-        loadNextEpisode()
-        loadSubtitles()
     }
 
     /** Turkish episodes are hard-subbed, so only movies get a subtitle list. */
     private fun loadSubtitles() {
-        val imdbId = videoId.removePrefix("movie:").takeIf { videoId.startsWith("movie:") && it.startsWith("tt") }
-            ?: return
+        val isEn = videoId.startsWith(EnSeriesActivity.PREFIX)
+        val id = when {
+            isEn -> videoId.removePrefix(EnSeriesActivity.PREFIX)
+            videoId.startsWith("movie:") -> videoId.removePrefix("movie:")
+            else -> return
+        }
+        if (!id.startsWith("tt")) return
         Thread {
             try {
-                val subs = Api.subtitles(imdbId)
+                val subs = if (isEn) Api.subtitlesEpisode(id) else Api.subtitles(id)
                 runOnUiThread { if (!isFinishing) externalSubs = subs }
             } catch (e: Exception) { /* sheet simply shows none */ }
         }.start()
@@ -399,7 +406,7 @@ class PlayerActivity : Activity() {
         }
         Toast.makeText(this, "Resolving ${s.name}…", Toast.LENGTH_SHORT).show()
         Thread {
-            val result = Torbox.resolveStream(key, s.hash, s.dn.ifEmpty { s.name })
+            val result = Torbox.resolveStream(key, s.hash, s.dn.ifEmpty { s.name }, s.fileIdx, s.epTag)
             runOnUiThread {
                 if (isFinishing) return@runOnUiThread
                 if (result.startsWith("http")) {
@@ -464,7 +471,7 @@ class PlayerActivity : Activity() {
                     System.currentTimeMillis() - start > 10000 && earlyAttempts < 5
                 if (p.ready || tryEarly) {
                     if (tryEarly) earlyAttempts++
-                    val link = Torbox.resolveStream(key, s.hash, s.dn.ifEmpty { s.name })
+                    val link = Torbox.resolveStream(key, s.hash, s.dn.ifEmpty { s.name }, s.fileIdx, s.epTag)
                     if (link.startsWith("http")) {
                         runOnUiThread {
                             if (isFinishing) return@runOnUiThread
@@ -663,6 +670,17 @@ class PlayerActivity : Activity() {
     private fun loadNextEpisode() {
         val sid = seriesId ?: return
         if (videoId.startsWith("movie:")) return
+        if (sid.startsWith(EnSeriesActivity.PREFIX)) {
+            Thread {
+                try {
+                    val eps = Api.enSeriesMeta(sid.removePrefix(EnSeriesActivity.PREFIX)).episodes
+                    val idx = eps.indexOfFirst { EnSeriesActivity.PREFIX + it.id == videoId }
+                    val next = if (idx >= 0) eps.drop(idx + 1).firstOrNull { !it.isUnaired } else null
+                    runOnUiThread { nextEn = next }
+                } catch (e: Exception) { /* no handoff this time */ }
+            }.start()
+            return
+        }
         Thread {
             try {
                 val eps = Api.episodes(sid)
@@ -677,10 +695,16 @@ class PlayerActivity : Activity() {
     }
 
     private fun showNextCard() {
-        val n = nextEpisode ?: return
+        val label: String
+        val thumb: String?
+        when {
+            nextEpisode != null -> { label = "Episode ${nextEpisode!!.absNumber}"; thumb = nextEpisode!!.thumbnail }
+            nextEn != null -> { label = "${nextEn!!.tag}  ·  ${nextEn!!.title}"; thumb = nextEn!!.thumbnail }
+            else -> return
+        }
         nextShown = true
-        nextTitle.text = "Episode ${n.absNumber}"
-        Ui.loadImage(nextThumb, n.thumbnail ?: intent.getStringExtra("seriesBackdrop"), 3f)
+        nextTitle.text = label
+        Ui.loadImage(nextThumb, thumb ?: intent.getStringExtra("seriesBackdrop"), 3f)
         nextCard.visibility = View.VISIBLE
         nextCard.alpha = 0f
         nextCard.animate().alpha(1f).setDuration(250).start()
@@ -696,10 +720,29 @@ class PlayerActivity : Activity() {
     private fun onEnded() {
         WatchState.savePosition(this, videoId, player.duration.coerceAtLeast(player.currentPosition))
         WatchState.updateHistoryPosition(this, videoId, player.duration, player.duration)
-        if (nextEpisode != null && !nextCancelled) playNext() else finish()
+        if ((nextEpisode != null || nextEn != null) && !nextCancelled) playNext() else finish()
     }
 
     private fun playNext() {
+        nextEn?.let { en ->
+            // English series: the series page resolves sources through TorBox
+            // and starts the player itself (singleTop, so it is re-entered)
+            if (player.duration > 0) {
+                WatchState.savePosition(this, videoId, player.currentPosition)
+                WatchState.updateHistoryPosition(this, videoId, player.currentPosition, player.duration)
+            }
+            val sid = seriesId ?: return
+            ended = true
+            startActivity(android.content.Intent(this, EnSeriesActivity::class.java)
+                .putExtra("imdbId", sid.removePrefix(EnSeriesActivity.PREFIX))
+                .putExtra("name", intent.getStringExtra("seriesName"))
+                .putExtra("background", intent.getStringExtra("seriesBackdrop"))
+                .putExtra("poster", intent.getStringExtra("seriesPoster"))
+                .putExtra("autoplayId", en.id)
+                .addFlags(android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP or android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP))
+            finish()
+            return
+        }
         val n = nextEpisode ?: return
         val series = intent.getStringExtra("seriesName") ?: ""
         if (player.duration > 0) {
@@ -733,8 +776,10 @@ class PlayerActivity : Activity() {
                 val season = intent.getIntExtra("season", 0)
                 ctlSub?.text = skinCase(listOfNotNull(series, season.takeIf { it > 0 }?.let { "Season $it" },
                     "${(remaining / 60000).coerceAtLeast(0)} min left").joinToString("  ·  "))
-                if (nextEpisode != null && playbackStarted) {
-                    if (!nextPrefetched && remaining <= 180_000) {
+                if ((nextEpisode != null || nextEn != null) && playbackStarted) {
+                    // Turkish episodes can be pre-resolved on the server; English
+                    // ones go through TorBox at play time, so nothing to warm
+                    if (!nextPrefetched && remaining <= 180_000 && nextEpisode != null) {
                         nextPrefetched = true
                         val id = nextEpisode!!.id
                         Thread { try { Api.streams(id) } catch (e: Exception) { } }.start()

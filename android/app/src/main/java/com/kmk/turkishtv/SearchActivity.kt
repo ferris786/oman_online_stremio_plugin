@@ -45,6 +45,7 @@ class SearchActivity : Activity() {
         data class S(val s: Api.Series) : Hit()
         data class M(val m: Api.Suggestion) : Hit()
         data class P(val p: Api.Person) : Hit()
+        data class T(val t: Api.EnMovie) : Hit()   // English series
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -125,24 +126,28 @@ class SearchActivity : Activity() {
             var series: List<Api.Series> = emptyList()
             var movies: List<Api.Suggestion> = emptyList()
             var people: List<Api.Person> = emptyList()
+            var shows: List<Api.EnMovie> = emptyList()
+            val t4 = Thread { shows = try { Api.enSeriesSearch(q).take(12) } catch (e: Exception) { emptyList() } }
+            t4.start()
             val t1 = Thread { series = try { Api.searchSeries(q) } catch (e: Exception) { emptyList() } }
             val t2 = Thread { movies = try { Api.suggestMovies(q) } catch (e: Exception) { emptyList() } }
             val t3 = Thread { people = try { Api.searchPeople(q) } catch (e: Exception) { emptyList() } }
-            t1.start(); t2.start(); t3.start(); t1.join(); t2.join(); t3.join()
+            t1.start(); t2.start(); t3.start(); t1.join(); t2.join(); t3.join(); t4.join()
 
             // an exact-ish person match is usually what someone means when they
             // say a name, so those lead; otherwise titles come first
             val nameHit = people.any { it.name.equals(q, true) }
             val hits = if (nameHit)
-                people.map { Hit.P(it) } + series.map { Hit.S(it) } + movies.map { Hit.M(it) }
+                people.map { Hit.P(it) } + series.map { Hit.S(it) } + shows.map { Hit.T(it) } + movies.map { Hit.M(it) }
             else
-                series.map { Hit.S(it) } + movies.map { Hit.M(it) } + people.take(4).map { Hit.P(it) }
+                series.map { Hit.S(it) } + shows.map { Hit.T(it) } + movies.map { Hit.M(it) } + people.take(4).map { Hit.P(it) }
 
             runOnUiThread {
                 if (isFinishing || seq != searchSeq) return@runOnUiThread
                 grid.adapter = HitAdapter(hits)
                 status.text = if (hits.isEmpty()) "No results for \"$q\"" else listOfNotNull(
                     series.size.takeIf { it > 0 }?.let { "$it series" },
+                    shows.size.takeIf { it > 0 }?.let { "$it shows" },
                     movies.size.takeIf { it > 0 }?.let { "$it movies" },
                     people.size.takeIf { it > 0 }?.let { "$it people" }
                 ).joinToString("  ·  ")
@@ -226,6 +231,22 @@ class SearchActivity : Activity() {
                     holder.name.text = if (hit.m.year != null) "${hit.m.name} (${hit.m.year})" else hit.m.name
                     Ui.loadImage(holder.poster, hit.m.poster, 4f, R.drawable.placeholder_poster)
                     holder.itemView.setOnClickListener { openSuggestion(hit.m) }
+                }
+                is Hit.T -> {
+                    holder.name.text = if (hit.t.year != null) "${hit.t.name} (${hit.t.year})" else hit.t.name
+                    Ui.loadImage(holder.poster, hit.t.poster, 4f, R.drawable.placeholder_poster)
+                    holder.chip.text = "SERIES"
+                    holder.chip.setBackgroundResource(R.drawable.chip_gold)
+                    holder.chip.setTextColor(resources.getColor(R.color.accent_dark))
+                    holder.chip.visibility = View.VISIBLE
+                    holder.itemView.setOnClickListener {
+                        startActivity(Intent(this@SearchActivity, EnSeriesActivity::class.java).apply {
+                            putExtra("imdbId", hit.t.id)
+                            putExtra("name", hit.t.name)
+                            putExtra("poster", hit.t.poster)
+                            putExtra("background", hit.t.background)
+                        })
+                    }
                 }
                 is Hit.P -> {
                     holder.name.text = hit.p.name

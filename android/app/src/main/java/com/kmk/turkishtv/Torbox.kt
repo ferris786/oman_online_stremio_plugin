@@ -405,7 +405,7 @@ object Torbox {
      *    with bypass_cache=true or the new torrent never appears
      *  - requestdl REQUIRES the API token as a ?token= query parameter
      */
-    fun resolveStream(key: String, hash: String, name: String): String {
+    fun resolveStream(key: String, hash: String, name: String, fileIdx: Int = -1, epTag: String = ""): String {
         val (t, why) = ensureListed(key, hash, name, needFiles = true)
         if (t == null) return why
         val files = t.optJSONArray("files") ?: return "No video file in this torrent"
@@ -415,10 +415,16 @@ object Torbox {
         // on junk (samples/trailers) and playback fails on every
         // retry. Strategy: real videos with sane sizes first;
         // fall back to name heuristics when sizes are unknown.
+        //
+        // Episodes inside a season pack: Torrentio's fileIdx names the file
+        // outright; failing that, the episode tag (S01E05, also 1x05) in the
+        // filename decides. Without either, a pack would resolve to its
+        // biggest file, i.e. some other episode.
         data class Pick(val id: Long, val size: Long, val score: Int)
         var best: Pick? = null
         var hasArchive = false
         val releaseName = t.optString("name", "").lowercase()
+        val epAlt = if (epTag.length == 6) "${epTag.substring(1, 3).toInt()}x${epTag.substring(4)}" else ""
         for (f in 0 until files.length()) {
             val file = files.optJSONObject(f) ?: continue
             val fname = file.optString("name", "").lowercase()
@@ -445,6 +451,18 @@ object Torbox {
             val size = file.optLong("size", 0)
             if (size > 100_000_000L) score += 50       // definitely a real movie file
             if (size == 0L) score -= 10                 // size unknown
+            // Episode selection inside a pack trumps everything else. The
+            // FILENAME tag decides, not Torrentio's fileIdx: verified on a
+            // real cached Breaking Bad S01 pack that TorBox numbers files in
+            // its own order (ids 2,1,5,3,6,4,0 for E01..E07), so fileIdx 4
+            // pointed at E06 when E05 was wanted. fileIdx is only a weak
+            // tiebreaker for packs whose filenames carry no tag at all.
+            if (epTag.isNotEmpty()) {
+                val up = fname.uppercase()
+                if (up.contains(epTag) || (epAlt.isNotEmpty() && up.contains(epAlt.uppercase()))) score += 1000
+                else if (Regex("""S\d{2}E\d{2}|\b\d{1,2}X\d{2}\b""").containsMatchIn(up)) score -= 300 // a different episode
+            }
+            if (fileIdx >= 0 && file.optLong("id", -1L) == fileIdx.toLong()) score += 300
             val norm = { x: String -> x.replace(Regex("[^a-z0-9]"), "") }
             val fn = norm(fname); val rn = norm(releaseName)
             if (rn.length > 8 && fn.length > 8 && (fn.contains(rn.substring(0, 12)) || rn.contains(fn.substring(0, 12)))) score += 20

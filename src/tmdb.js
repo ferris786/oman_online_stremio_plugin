@@ -431,6 +431,20 @@ function reviewsForImdb(imdbId) {
     });
 }
 
+/** "Because you watched": TMDB's recommendations for a film, by IMDb id */
+function recommendationsForImdb(imdbId) {
+    return memo(suggestCache, `rec:${imdbId}`, SUGGEST_TTL, async () => {
+        const found = await get(`/find/${imdbId}`, { external_source: "imdb_id" });
+        const movie = (found.movie_results || [])[0];
+        if (!movie) return { title: null, suggestions: [] };
+        const d = await get(`/movie/${movie.id}/recommendations`);
+        return {
+            title: movie.title || movie.original_title,
+            suggestions: (d.results || []).filter(m => m.poster_path).slice(0, 30).map(movieSuggestion)
+        };
+    });
+}
+
 /** trailer id for a movie, when Cinemeta has none */
 function trailerForImdb(imdbId) {
     return memo(personCache, `tr:${imdbId}`, PERSON_TTL, async () => {
@@ -445,5 +459,5 @@ function trailerForImdb(imdbId) {
 module.exports = {
     resolveId, show, episodes, enrichAll, absToSeasonEp, TMDB_IDS,
     suggestMovies, imdbIdOf, searchPeople, personMovies,
-    reviewsForImdb, trailerForImdb, pickTrailer, discover
+    reviewsForImdb, trailerForImdb, pickTrailer, discover, recommendationsForImdb
 };

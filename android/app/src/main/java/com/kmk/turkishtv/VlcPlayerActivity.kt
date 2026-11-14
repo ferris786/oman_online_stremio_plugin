@@ -27,7 +27,8 @@ import org.videolan.libvlc.util.VLCVideoLayout
 class VlcPlayerActivity : Activity() {
 
     data class VStream(val name: String, val title: String, val url: String,
-                       val hash: String, val dn: String, val cached: Boolean)
+                       val hash: String, val dn: String, val cached: Boolean,
+                       val fileIdx: Int = -1, val epTag: String = "")
 
     private lateinit var libVlc: LibVLC
     private lateinit var mp: MediaPlayer
@@ -53,7 +54,8 @@ class VlcPlayerActivity : Activity() {
         for (i in 0 until arr.length()) {
             val o = arr.getJSONObject(i)
             list.add(VStream(o.optString("name"), o.optString("title"), o.optString("url"),
-                o.optString("hash", ""), o.optString("dn", ""), o.optBoolean("cached", true)))
+                o.optString("hash", ""), o.optString("dn", ""), o.optBoolean("cached", true),
+                o.optInt("fileIdx", -1), o.optString("epTag", "")))
         }
         streams = list
         streamIndex = intent.getIntExtra("startIndex", 0).coerceIn(0, (list.size - 1).coerceAtLeast(0))
@@ -112,7 +114,7 @@ class VlcPlayerActivity : Activity() {
         }
         status.text = "Resolving ${s.name}…"
         Thread {
-            val result = if (s.cached) Torbox.resolveStream(key, s.hash, s.dn.ifEmpty { s.name })
+            val result = if (s.cached) Torbox.resolveStream(key, s.hash, s.dn.ifEmpty { s.name }, s.fileIdx, s.epTag)
             else resolveUncachedBlocking(key, s)
             runOnUiThread {
                 if (result.startsWith("http")) {
@@ -133,7 +135,7 @@ class VlcPlayerActivity : Activity() {
         val start = System.currentTimeMillis()
         while (System.currentTimeMillis() - start < 30 * 60 * 1000) {
             val p = Torbox.downloadProgress(key, torrentId)
-            if (p.ready) return Torbox.resolveStream(key, s.hash, s.dn.ifEmpty { s.name })
+            if (p.ready) return Torbox.resolveStream(key, s.hash, s.dn.ifEmpty { s.name }, s.fileIdx, s.epTag)
             runOnUiThread { status.text = "⏳ ${p.percent}% · ${String.format("%.1f", p.speedMbps)} MB/s" }
             Thread.sleep(2500)
         }

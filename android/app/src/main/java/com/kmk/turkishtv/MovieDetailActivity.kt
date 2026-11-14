@@ -55,6 +55,16 @@ class MovieDetailActivity : Activity() {
         sourcesBtn.setOnClickListener { findSources(pickBest = false) }
         playBtn.requestFocus()
 
+        val myListBtn = findViewById<TextView>(R.id.mMyList)
+        myListBtn.text = MyList.label(MyList.has(this, "movie", imdbId))
+        myListBtn.setOnClickListener {
+            val m = movie ?: return@setOnClickListener
+            val nowIn = MyList.toggle(this, MyList.Entry("movie", imdbId, m.name, m.poster, background,
+                meta?.optString("year") ?: m.year, meta?.optString("description")))
+            myListBtn.text = MyList.label(nowIn)
+            Toast.makeText(this, if (nowIn) "Added to My List" else "Removed from My List", Toast.LENGTH_SHORT).show()
+        }
+
         findViewById<TextView>(R.id.mReviews).setOnClickListener {
             status.text = "Loading reviews…"
             Extras.loadReviews(this, imdbId, movie?.name ?: "", meta?.optString("imdbRating")) {

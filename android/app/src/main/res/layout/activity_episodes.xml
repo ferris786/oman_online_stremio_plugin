@@ -104,6 +104,21 @@
                 android:textStyle="bold" />
 
             <TextView
+                android:id="@+id/btnMyList"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="10dp"
+                android:background="@drawable/btn_primary"
+                android:focusable="true"
+                android:clickable="true"
+                android:paddingStart="18dp" android:paddingEnd="18dp"
+                android:paddingTop="10dp" android:paddingBottom="10dp"
+                android:text="＋  My List"
+                android:textColor="@color/btn_primary_text"
+                android:textSize="15sp"
+                android:textStyle="bold" />
+
+            <TextView
                 android:id="@+id/btnTrailer"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"

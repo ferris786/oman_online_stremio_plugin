@@ -131,7 +131,95 @@ object Api {
         val genres: List<String> = emptyList()
     )
 
-    data class Torrent(val name: String, val hash: String, val seeders: Int, val sizeBytes: Long, val quality: String)
+    /**
+     * fileIdx: for a season pack, which file inside it is the wanted episode
+     * (Torrentio reports it; -1 when unknown, in which case the resolver
+     * falls back to matching the episode tag in the filename).
+     */
+    data class Torrent(val name: String, val hash: String, val seeders: Int, val sizeBytes: Long,
+                       val quality: String, val fileIdx: Int = -1)
+
+    // ---------- English TV series ----------
+
+    data class EnEpisode(
+        val id: String, val season: Int, val episode: Int, val title: String,
+        val overview: String?, val thumbnail: String?, val released: String?
+    ) {
+        val tag: String get() = "S%02dE%02d".format(season, episode)
+        val isUnaired: Boolean get() = Ui.daysSince(released)?.let { it < 0 } ?: false
+    }
+
+    data class EnSeriesMeta(
+        val id: String, val name: String, val poster: String?, val background: String?,
+        val logo: String?, val description: String?, val genres: List<String>, val year: String?,
+        val rating: String?, val trailer: String?, val episodes: List<EnEpisode>
+    )
+
+    fun enSeriesCatalog(catalog: String, skip: Int = 0, genre: String? = null): List<EnMovie> {
+        val path = "/en/catalog/series/" + catalog +
+            (if (genre != null) "/genre/" + encode(genre) else if (skip > 0) "/$skip" else "")
+        return parseMovies(get(path))
+    }
+
+    fun enSeriesSearch(query: String): List<EnMovie> = parseMovies(get("/en/search/series/" + encode(query)))
+
+    fun enSeriesMeta(imdbId: String): EnSeriesMeta {
+        val m = JSONObject(get("/en/meta/series/" + encode(imdbId))).getJSONObject("meta")
+        val arr = m.optJSONArray("videos") ?: JSONArray()
+        val eps = ArrayList<EnEpisode>(arr.length())
+        for (i in 0 until arr.length()) {
+            val v = arr.getJSONObject(i)
+            eps.add(EnEpisode(v.getString("id"), v.optInt("season", 1), v.optInt("episode", 1),
+                v.optString("title", ""), v.str("overview"), v.str("thumbnail"), v.str("released")))
+        }
+        return EnSeriesMeta(m.optString("id", imdbId), m.optString("name", ""), m.str("poster"),
+            m.str("background"), m.str("logo"), m.str("description"), m.strList("genres"),
+            m.str("year"), m.str("imdbRating"), m.str("trailer"), eps)
+    }
+
+    /** Torrentio for one episode. Season packs come back with the episode's fileIdx. */
+    fun torrentioEpisode(imdbId: String, season: Int, episode: Int): List<Torrent> {
+        val out = ArrayList<Torrent>()
+        try {
+            val body = rawGet("https://torrentio.strem.fun/stream/series/" + encode("$imdbId:$season:$episode") + ".json")
+            val streams = JSONObject(body).optJSONArray("streams") ?: return out
+            for (i in 0 until streams.length()) {
+                val st = streams.optJSONObject(i) ?: continue
+                val hash = st.optString("infoHash", "").lowercase()
+                if (hash.length < 20) continue
+                val title = st.optString("title", "")
+                val name = title.substringBefore("\n").trim()
+                if (name.isEmpty()) continue
+                val seeds = Regex("👤\\s*(\\d+)").find(title)?.groupValues?.get(1)?.toIntOrNull() ?: 1
+                val sizeStr = Regex("💾\\s*([\\d.]+)\\s*(GB|MB)").find(title)
+                val size = when (sizeStr?.groupValues?.get(2)) {
+                    "GB" -> (sizeStr.groupValues[1].toDouble() * 1e9).toLong()
+                    "MB" -> (sizeStr.groupValues[1].toDouble() * 1e6).toLong()
+                    else -> 0L
+                }
+                out.add(Torrent(name, hash, seeds, size, "", st.optInt("fileIdx", -1)))
+            }
+        } catch (e: Exception) { /* torrentio unreachable */ }
+        return out
+    }
+
+    /** episode subtitles (OpenSubtitles via the addon); id is tt:season:episode */
+    fun subtitlesEpisode(id: String): List<Subtitle> {
+        val arr = JSONObject(get("/en/subtitles/series/" + encode(id))).optJSONArray("subtitles")
+            ?: return emptyList()
+        val out = ArrayList<Subtitle>(arr.length())
+        for (i in 0 until arr.length()) {
+            val o = arr.getJSONObject(i)
+            out.add(Subtitle(o.optString("id"), o.optString("lang"), o.optString("label"), o.optString("url")))
+        }
+        return out
+    }
+
+    /** "Because you watched": the film's title plus recommendations */
+    fun similar(imdbId: String): Pair<String?, List<Suggestion>> {
+        val body = get("/en/similar/movie/" + encode(imdbId))
+        return Pair(JSONObject(body).str("title"), parseSuggestions(body))
+    }
 
     private fun parseMovies(body: String): List<EnMovie> {
         val metas = JSONObject(body).getJSONArray("metas")

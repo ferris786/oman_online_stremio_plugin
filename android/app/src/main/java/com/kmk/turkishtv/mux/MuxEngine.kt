@@ -24,25 +24,44 @@ object MuxEngine {
         val providers: List<String> = emptyList()
     )
 
+    /**
+     * season/episode > 0 switches to TV mode: Torrentio is queried for the
+     * episode (season packs arrive with the episode's fileIdx), TPB is
+     * searched with the episode tag, and packs are ranked so an uncached
+     * 40 GB season is never the first thing the player tries.
+     */
     fun fetch(
         imdbId: String,
         title: String,
         year: String,
         torboxKey: String?,
-        config: MuxConfig
+        config: MuxConfig,
+        season: Int = 0,
+        episode: Int = 0
     ): Result {
+        val tv = season > 0 && episode > 0
+        val epTag = if (tv) "S%02dE%02d".format(season, episode) else ""
+
         // ---- 1. parallel provider fetch (device-side: not DC-blocked) ----
         var tor: List<Api.Torrent> = emptyList()
         var yts: List<Api.Torrent> = emptyList()
         var tpb: List<Api.Torrent> = emptyList()
         var addon: List<Api.Torrent> = emptyList()
 
-        val t0 = Thread { tor = try { Api.torrentioMovie(imdbId) } catch (e: Exception) { emptyList() } }
-        val t1 = Thread { yts = try { Api.ytsByImdb(imdbId) } catch (e: Exception) { emptyList() } }
-        val t2 = Thread { if (title.isNotEmpty()) tpb = try { Api.apibaySearch(title, year) } catch (e: Exception) { emptyList() } }
-        val t3 = Thread { addon = try { Api.enTorrents(imdbId) } catch (e: Exception) { emptyList() } }
+        val t0 = Thread { tor = try { if (tv) Api.torrentioEpisode(imdbId, season, episode) else Api.torrentioMovie(imdbId) } catch (e: Exception) { emptyList() } }
+        val t1 = Thread { if (!tv) yts = try { Api.ytsByImdb(imdbId) } catch (e: Exception) { emptyList() } }
+        val t2 = Thread { if (title.isNotEmpty()) tpb = try { Api.apibaySearch(if (tv) "$title $epTag" else title, if (tv) "" else year) } catch (e: Exception) { emptyList() } }
+        val t3 = Thread { if (!tv) addon = try { Api.enTorrents(imdbId) } catch (e: Exception) { emptyList() } }
         t0.start(); t1.start(); t2.start(); t3.start()
         t0.join(); t1.join(); t2.join(); t3.join()
+
+        // TPB results for an episode must actually be that episode (or a
+        // pack that contains it); a stray result for another season is junk
+        if (tv) tpb = tpb.filter { t ->
+            val n = t.name.uppercase()
+            n.contains(epTag) || Regex("""\bS%02d\b(?!E)""".format(season)).containsMatchIn(n) ||
+                n.contains("SEASON $season") || n.contains("COMPLETE")
+        }
 
         // ---- 2. parse + 3. dedupe by infohash (provider priority: YTS > TPB > ADDON) ----
         val byHash = LinkedHashMap<String, MuxStream>()
@@ -53,7 +72,7 @@ object MuxEngine {
                 byHash[h] = MuxStream(
                     name = t.name, hash = h, sizeBytes = t.sizeBytes,
                     seeders = t.seeders, provider = provider,
-                    attrs = ReleaseParser.parse(t.name)
+                    attrs = ReleaseParser.parse(t.name), fileIdx = t.fileIdx
                 )
             }
         }
@@ -92,9 +111,19 @@ object MuxEngine {
         // order so every quality that exists is REPRESENTED - cached rows
         // still lead each tier.
         val resOrder = config.resolutionOrder()
+        // TV: a cached season pack is the best thing there is (instant, and
+        // the next episodes are already there); an uncached pack is the worst
+        // (a 40 GB download for one episode), so it goes last.
+        fun packRank(s: MuxStream): Int = when {
+            !tv -> if (s.cached) 0 else 1
+            s.cached && s.isPack -> 0
+            s.cached -> 1
+            !s.isPack -> 2
+            else -> 3
+        }
         fun tierSort(a: MuxStream, b: MuxStream): Int = compareValuesBy(
             a, b,
-            { if (it.cached) 0 else 1 },        // cached first within tier
+            { packRank(it) },
             { -it.seeders },                    // more seeders first
             { it.sizeBytes }                    // smaller first
         )

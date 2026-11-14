@@ -76,6 +76,17 @@ class EpisodesActivity : Activity() {
         btnResume.setOnClickListener { target?.let { play(it) } }
         btnSeason.setOnClickListener { showSeasonMenu() }
 
+        val myListBtn = findViewById<TextView>(R.id.btnMyList)
+        myListBtn.visibility = View.VISIBLE
+        myListBtn.text = MyList.label(MyList.has(this, "series", seriesId))
+        myListBtn.setOnClickListener {
+            val m = meta
+            val nowIn = MyList.toggle(this, MyList.Entry("series", seriesId, seriesName,
+                seriesPoster, seriesBackdrop, m?.year, m?.description))
+            myListBtn.text = MyList.label(nowIn)
+            Toast.makeText(this, if (nowIn) "Added to My List" else "Removed from My List", Toast.LENGTH_SHORT).show()
+        }
+
         Thread {
             try {
                 val m = Api.seriesMeta(seriesId)

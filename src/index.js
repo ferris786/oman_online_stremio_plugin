@@ -16,6 +16,7 @@ const { getSeries, getMeta, searchSeries } = require("./catalog");
 const { getStream } = require("./stream");
 const xs = require("./extractors/xtremestream");
 const en = require("./english");
+const tmdb = require("./tmdb");
 const publicbase = require("./publicbase");
 publicbase.initFromEnv();
 const QRCode = require("qrcode");
@@ -353,9 +354,72 @@ app.get("/en/catalog/movie/:catalog/genre/:genre", enCatalogHandler);
 app.get("/en/catalog/movie/:catalog/:skip", enCatalogHandler);
 
 // ---------------------------------------------------------------------------
+// English TV series: same Cinemeta catalogues, type=series. Episode ids are
+// Stremio's tt:season:episode, which Torrentio and OpenSubtitles key on.
+// ---------------------------------------------------------------------------
+const enSeriesCatalogHandler = async (req, res) => {
+    try {
+        const { catalog, genre } = req.params;
+        if (!en.CINEMETA_CATALOGS.includes(catalog)) return res.status(400).json({ error: "bad catalog" });
+        if (genre && !/^[A-Za-z -]+$/.test(genre)) return res.status(400).json({ error: "bad genre" });
+        const out = await en.enCatalog(catalog, req.params.skip, genre, "series");
+        res.setHeader("Cache-Control", "public, max-age=3600");
+        res.json(out);
+    } catch (e) {
+        res.status(502).json({ error: e.message });
+    }
+};
+app.get("/en/catalog/series/:catalog", enSeriesCatalogHandler);
+app.get("/en/catalog/series/:catalog/genre/:genre", enSeriesCatalogHandler);
+app.get("/en/catalog/series/:catalog/:skip", enSeriesCatalogHandler);
+
+app.get("/en/search/series/:query", async (req, res) => {
+    try {
+        const out = await en.enSearch(req.params.query, "series");
+        res.setHeader("Cache-Control", "public, max-age=3600");
+        res.json(out);
+    } catch (e) {
+        res.status(502).json({ error: e.message });
+    }
+});
+
+app.get("/en/meta/series/:imdbId", async (req, res) => {
+    try {
+        if (!/^tt\d+$/.test(req.params.imdbId)) return res.status(400).json({ error: "bad id" });
+        const meta = await en.enSeriesMeta(req.params.imdbId);
+        res.setHeader("Cache-Control", "public, max-age=3600");
+        res.json({ meta });
+    } catch (e) {
+        res.status(502).json({ error: e.message });
+    }
+});
+
+app.get("/en/subtitles/series/:id", async (req, res) => {
+    try {
+        if (!/^tt\d+:\d+:\d+$/.test(req.params.id)) return res.status(400).json({ error: "bad id" });
+        const out = await en.enSubtitles(req.params.id, "series");
+        res.setHeader("Cache-Control", "public, max-age=21600");
+        res.json(out);
+    } catch (e) {
+        res.status(502).json({ error: e.message });
+    }
+});
+
+// "Because you watched X" - TMDB recommendations for a finished film
+app.get("/en/similar/movie/:imdbId", async (req, res) => {
+    try {
+        if (!/^tt\d+$/.test(req.params.imdbId)) return res.status(400).json({ error: "bad id" });
+        const out = await tmdb.recommendationsForImdb(req.params.imdbId);
+        res.setHeader("Cache-Control", "public, max-age=21600");
+        res.json(out);
+    } catch (e) {
+        res.status(502).json({ error: e.message });
+    }
+});
+
+// ---------------------------------------------------------------------------
 // Search (TMDB-backed type-ahead), actor search, subtitles
 // ---------------------------------------------------------------------------
-const tmdb = require("./tmdb");
 
 app.get("/en/suggest/movie/:query", async (req, res) => {
     try {

@@ -71,20 +71,20 @@ function genreOf(meta) {
     return meta.genres || meta.genre || [];
 }
 
-async function enCatalog(catalog, skip, genre) {
-    const key = `${catalog}:${skip || 0}:${genre || ""}`;
+async function enCatalog(catalog, skip, genre, type = "movie") {
+    const key = `${type}:${catalog}:${skip || 0}:${genre || ""}`;
     const cached = catalogCache.get(key);
     if (cached) return cached;
 
-    const base = `https://cinemeta-catalogs.strem.io/${catalog}/catalog/movie/${catalog}`;
+    const base = `https://cinemeta-catalogs.strem.io/${catalog}/catalog/${type}/${catalog}`;
     let url = `${base}.json`;
     if (genre) url = `${base}/genre=${encodeURIComponent(genre)}.json`;
     else if (skip) url = `${base}/skip=${parseInt(skip) || 0}.json`;
     const data = await fetchJson(url);
-    // Cinemeta's movie catalogs are clean today, but a mislabelled TV entry
-    // would otherwise sit in a movie row with no playable source, so drop
-    // anything that does not declare itself a movie.
-    let metas = ((data && data.metas) || []).filter(m => !m.type || m.type === "movie");
+    // Cinemeta's catalogs are clean today, but a mislabelled entry would
+    // otherwise sit in the wrong row with no playable source, so drop
+    // anything that does not declare the type we asked for.
+    let metas = ((data && data.metas) || []).filter(m => !m.type || m.type === type);
     if (genre) {
         const want = genre.toLowerCase();
         const exact = metas.filter(m => genreOf(m).some(g => String(g).toLowerCase() === want));
@@ -141,23 +141,61 @@ async function enLatestAdded() {
     return value;
 }
 
-async function enSearch(query) {
-    const key = `search:${query.toLowerCase()}`;
+async function enSearch(query, type = "movie") {
+    const key = `search:${type}:${query.toLowerCase()}`;
     const cached = catalogCache.get(key);
     if (cached) return cached;
-    const data = await fetchJson(`${V3_BASE}/catalog/movie/search=${encodeURIComponent(query)}.json`);
+    const data = await fetchJson(`${V3_BASE}/catalog/${type}/search=${encodeURIComponent(query)}.json`);
     const value = { metas: (data && data.metas) || [] };
     catalogCache.set(key, value);
     return value;
 }
 
-async function enMeta(imdbId) {
-    const cached = metaCache.get(imdbId);
+async function enMeta(imdbId, type = "movie") {
+    const key = `${type}:${imdbId}`;
+    const cached = metaCache.get(key);
     if (cached) return cached;
-    const data = await fetchJson(`${V3_BASE}/meta/movie/${imdbId}.json`);
+    const data = await fetchJson(`${V3_BASE}/meta/${type}/${imdbId}.json`);
     if (!data || !data.meta) throw new Error("meta not found");
-    metaCache.set(imdbId, data.meta);
+    metaCache.set(key, data.meta);
     return data.meta;
+}
+
+/**
+ * English series meta, trimmed for the TV: the series fields the app's
+ * series page needs plus every episode with its Stremio id (tt:s:e), which
+ * is also what Torrentio and OpenSubtitles key on.
+ */
+async function enSeriesMeta(imdbId) {
+    const m = await enMeta(imdbId, "series");
+    const videos = (m.videos || [])
+        .filter(v => v.id && v.season > 0)   // season 0 = specials; keep the page simple
+        .map(v => ({
+            id: v.id,
+            season: v.season,
+            episode: v.episode || v.number,
+            title: v.name || v.title || `Episode ${v.episode || v.number}`,
+            overview: v.overview || v.description || null,
+            thumbnail: v.thumbnail || null,
+            released: v.released || v.firstAired || null,
+            rating: v.rating || null
+        }));
+    return {
+        id: m.id || imdbId,
+        name: m.name,
+        poster: m.poster || null,
+        background: m.background || m.poster || null,
+        logo: m.logo || null,
+        description: m.description || null,
+        genres: m.genres || m.genre || [],
+        year: m.year || m.releaseInfo || null,
+        imdbRating: m.imdbRating || null,
+        runtime: m.runtime || null,
+        status: m.status || null,
+        trailer: (m.trailerStreams && m.trailerStreams[0] && m.trailerStreams[0].ytId) ||
+            (m.trailers && m.trailers[0] && m.trailers[0].source) || null,
+        videos
+    };
 }
 
 // ---------- Torrent candidates (TPB / apibay) ----------
@@ -296,13 +334,14 @@ const SUB_PER_LANG = 3;
 
 const subtitleCache = makeCache(6 * 60 * 60 * 1000);
 
-async function enSubtitles(imdbId) {
-    const cached = subtitleCache.get(imdbId);
+async function enSubtitles(id, type = "movie") {
+    const key = `${type}:${id}`;
+    const cached = subtitleCache.get(key);
     if (cached) return cached;
     let subtitles = [];
     try {
         const data = await fetchJson(
-            `https://opensubtitles-v3.strem.io/subtitles/movie/${encodeURIComponent(imdbId)}.json`, 12000);
+            `https://opensubtitles-v3.strem.io/subtitles/${type}/${encodeURIComponent(id)}.json`, 12000);
         const seenUrl = new Set();
         const perLang = {};
         for (const s of (data && data.subtitles) || []) {
@@ -325,11 +364,11 @@ async function enSubtitles(imdbId) {
         });
         for (const l of langs) subtitles.push(...perLang[l]);
     } catch (e) {
-        console.warn(`[subs] ${imdbId}: ${e.message}`);
+        console.warn(`[subs] ${key}: ${e.message}`);
     }
     const value = { subtitles };
-    subtitleCache.set(imdbId, value);
+    subtitleCache.set(key, value);
     return value;
 }
 
-module.exports = { enCatalog, enLatestAdded, enSearch, enMeta, enTorrents, enSubtitles, CINEMETA_CATALOGS };
+module.exports = { enCatalog, enLatestAdded, enSearch, enMeta, enSeriesMeta, enTorrents, enSubtitles, CINEMETA_CATALOGS };
