@@ -400,6 +400,23 @@ class SeriesActivity : Activity() {
             .show()
     }
 
+    /**
+     * While the player is in front, the home screen is still alive behind it
+     * holding up to thirty rows of artwork. Hand the bitmaps back so the
+     * system has no reason to kill the player to reclaim memory.
+     */
+    override fun onStop() {
+        super.onStop()
+        runCatching { coil.Coil.imageLoader(this).memoryCache?.clear() }
+    }
+
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) {
+            runCatching { coil.Coil.imageLoader(this).memoryCache?.clear() }
+        }
+    }
+
     override fun onResume() {
         super.onResume()
         if (catalog.isNotEmpty() && section == Section.HOME) {

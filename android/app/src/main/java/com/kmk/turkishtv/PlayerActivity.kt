@@ -271,7 +271,9 @@ class PlayerActivity : Activity() {
         // Generous buffers for flaky streaming CDNs: keep 30s minimum / 2 min
         // maximum buffered, start after 3s (5s after a stall).
         val loadControl = androidx.media3.exoplayer.DefaultLoadControl.Builder()
-            .setBufferDurationsMs(30_000, 120_000, 3_000, 5_000)
+            .setBufferDurationsMs(30_000, 90_000, 3_000, 5_000)
+            .setTargetBufferBytes(32 * 1024 * 1024)
+            .setPrioritizeTimeOverSizeThresholds(false)
             .build()
 
         val httpFactory = DefaultHttpDataSource.Factory()
@@ -304,8 +306,19 @@ class PlayerActivity : Activity() {
                             showBuffering(false)
                         }
                         if (state == Player.STATE_ENDED && !ended) {
-                            ended = true
-                            onEnded()
+                            val dur = player.duration
+                            val pos = player.currentPosition
+                            // A source that dies mid-episode reports ENDED just
+                            // like a finished one. Treating that as "finished"
+                            // is what closed the player and dropped the viewer
+                            // back on the home screen partway through.
+                            if (dur > 0 && pos < dur * 92 / 100) {
+                                noteStop("ended early at ${pos / 1000}s of ${dur / 1000}s")
+                                handleEarlyEnd()
+                            } else {
+                                ended = true
+                                onEnded()
+                            }
                         }
                     }
 
@@ -407,7 +420,7 @@ class PlayerActivity : Activity() {
         }
         streamIndex = next
         updateSourcePill()
-        playCurrent()
+        playCurrent(resumeMs = WatchState.getPosition(this, videoId))
     }
 
     /**
@@ -819,6 +832,36 @@ class PlayerActivity : Activity() {
         }
     }
 
+    /** remembered across launches so a mystery stop can be explained afterwards */
+    private fun noteStop(reason: String) {
+        runCatching {
+            getSharedPreferences("settings", MODE_PRIVATE).edit()
+                .putString("last_stop_reason", reason)
+                .putLong("last_stop_at", System.currentTimeMillis())
+                .apply()
+        }
+    }
+
+    /**
+     * The stream stopped well short of the end. Keep the position, drop this
+     * source, and carry on with the next one rather than closing.
+     */
+    private fun handleEarlyEnd() {
+        val pos = player.currentPosition
+        WatchState.savePosition(this, videoId, pos)
+        WatchState.updateHistoryPosition(this, videoId, pos, player.duration)
+        playbackStarted = false
+        val untried = streams.indices.count { it !in failedSources } - 1
+        if (untried <= 0) {
+            Toast.makeText(this, "The stream stopped early and no other source is left. " +
+                "Press play again to resume from here.", Toast.LENGTH_LONG).show()
+            return
+        }
+        Toast.makeText(this, "Stream stopped early - switching source and resuming",
+            Toast.LENGTH_LONG).show()
+        tryNextSource("Stream ended early")
+    }
+
     private fun showBuffering(on: Boolean) {
         playerView.removeCallbacks(showBufferPanel)
         if (!on) {
@@ -871,7 +914,9 @@ class PlayerActivity : Activity() {
             "BUFFER" to ("#".repeat(bars) + ".".repeat(10 - bars) + "  ${buffered}s"),
             "DROPPED" to "$dropped frames",
             "STALLS" to "$stalls",
-            "DECODER" to decoderName.take(26)
+            "DECODER" to decoderName.take(26),
+            "LAST STOP" to (getSharedPreferences("settings", MODE_PRIVATE)
+                .getString("last_stop_reason", "-") ?: "-").take(26)
         )
         diagPanel.text = rows.joinToString("\n") { (k, v2) -> k.padEnd(9) + v2 }
     }
