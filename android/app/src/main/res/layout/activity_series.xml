@@ -141,75 +141,287 @@
             android:orientation="vertical" />
     </com.kmk.turkishtv.SnapScrollView>
 
-    <!-- Left rail -->
+    <!-- Left rail: sections on top, tools below. Collapsed to glyphs;
+         labels slide in while the rail has focus. -->
     <LinearLayout
         android:id="@+id/rail"
-        android:layout_width="64dp"
+        android:layout_width="wrap_content"
         android:layout_height="match_parent"
-        android:gravity="center_horizontal"
+        android:background="@drawable/scrim_left"
         android:orientation="vertical"
-        android:paddingTop="22dp">
+        android:paddingStart="12dp"
+        android:paddingEnd="12dp"
+        android:paddingTop="20dp">
 
         <TextView
-            android:layout_width="wrap_content"
+            android:layout_width="40dp"
             android:layout_height="wrap_content"
             android:fontFamily="@font/cinzel_bold"
+            android:gravity="center"
             android:text="W"
             android:textColor="@color/accent"
             android:textSize="24sp"
-            android:layout_marginBottom="14dp" />
+            android:layout_marginBottom="12dp" />
 
-        <TextView
+        <LinearLayout
             android:id="@+id/railHome"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:layout_marginTop="8dp"
-            android:background="@drawable/rail_item"
-            android:focusable="true"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:background="@drawable/rail_pill"
             android:clickable="true"
-            android:gravity="center"
-            android:text="⌂"
-            android:textColor="@color/rail_icon_text"
-            android:textSize="20sp" />
+            android:focusable="true"
+            android:gravity="center_vertical"
+            android:minWidth="40dp"
+            android:orientation="horizontal"
+            android:paddingTop="8dp"
+            android:paddingBottom="8dp">
 
-        <TextView
+            <TextView
+                android:layout_width="24dp"
+                android:layout_height="wrap_content"
+                android:duplicateParentState="true"
+                android:gravity="center"
+                android:text="⌂"
+                android:textColor="@color/rail_icon_text"
+                android:textSize="19sp" />
+
+            <TextView
+                android:id="@+id/railHomeLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:duplicateParentState="true"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
+                android:text="Home"
+                android:textColor="@color/rail_icon_text"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:visibility="gone" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/railTurkish"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:background="@drawable/rail_pill"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center_vertical"
+            android:minWidth="40dp"
+            android:orientation="horizontal"
+            android:paddingTop="8dp"
+            android:paddingBottom="8dp">
+
+            <TextView
+                android:layout_width="24dp"
+                android:layout_height="wrap_content"
+                android:duplicateParentState="true"
+                android:gravity="center"
+                android:text="☾"
+                android:textColor="@color/rail_icon_text"
+                android:textSize="19sp" />
+
+            <TextView
+                android:id="@+id/railTurkishLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:duplicateParentState="true"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
+                android:text="Turkish"
+                android:textColor="@color/rail_icon_text"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:visibility="gone" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/railTv"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:background="@drawable/rail_pill"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center_vertical"
+            android:minWidth="40dp"
+            android:orientation="horizontal"
+            android:paddingTop="8dp"
+            android:paddingBottom="8dp">
+
+            <TextView
+                android:layout_width="24dp"
+                android:layout_height="wrap_content"
+                android:duplicateParentState="true"
+                android:gravity="center"
+                android:text="▣"
+                android:textColor="@color/rail_icon_text"
+                android:textSize="17sp" />
+
+            <TextView
+                android:id="@+id/railTvLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:duplicateParentState="true"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
+                android:text="TV"
+                android:textColor="@color/rail_icon_text"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:visibility="gone" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/railMovies"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:background="@drawable/rail_pill"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center_vertical"
+            android:minWidth="40dp"
+            android:orientation="horizontal"
+            android:paddingTop="8dp"
+            android:paddingBottom="8dp">
+
+            <TextView
+                android:layout_width="24dp"
+                android:layout_height="wrap_content"
+                android:duplicateParentState="true"
+                android:gravity="center"
+                android:text="▶"
+                android:textColor="@color/rail_icon_text"
+                android:textSize="15sp" />
+
+            <TextView
+                android:id="@+id/railMoviesLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:duplicateParentState="true"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
+                android:text="Movies"
+                android:textColor="@color/rail_icon_text"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:visibility="gone" />
+        </LinearLayout>
+
+        <LinearLayout
             android:id="@+id/railSpin"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:layout_marginTop="8dp"
-            android:background="@drawable/rail_item"
-            android:focusable="true"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:background="@drawable/rail_pill"
             android:clickable="true"
-            android:gravity="center"
-            android:text="✸"
-            android:textColor="@color/rail_icon_text"
-            android:textSize="20sp" />
+            android:focusable="true"
+            android:gravity="center_vertical"
+            android:minWidth="40dp"
+            android:orientation="horizontal"
+            android:paddingTop="8dp"
+            android:paddingBottom="8dp">
 
-        <TextView
+            <TextView
+                android:layout_width="24dp"
+                android:layout_height="wrap_content"
+                android:duplicateParentState="true"
+                android:gravity="center"
+                android:text="✸"
+                android:textColor="@color/rail_icon_text"
+                android:textSize="17sp" />
+
+            <TextView
+                android:id="@+id/railSpinLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:duplicateParentState="true"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
+                android:text="The Reel"
+                android:textColor="@color/rail_icon_text"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:visibility="gone" />
+        </LinearLayout>
+
+        <LinearLayout
             android:id="@+id/railSearch"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:layout_marginTop="8dp"
-            android:background="@drawable/rail_item"
-            android:focusable="true"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:background="@drawable/rail_pill"
             android:clickable="true"
-            android:gravity="center"
-            android:text="⌕"
-            android:textColor="@color/rail_icon_text"
-            android:textSize="22sp" />
+            android:focusable="true"
+            android:gravity="center_vertical"
+            android:minWidth="40dp"
+            android:orientation="horizontal"
+            android:paddingTop="8dp"
+            android:paddingBottom="8dp">
 
-        <TextView
+            <TextView
+                android:layout_width="24dp"
+                android:layout_height="wrap_content"
+                android:duplicateParentState="true"
+                android:gravity="center"
+                android:text="⌕"
+                android:textColor="@color/rail_icon_text"
+                android:textSize="20sp" />
+
+            <TextView
+                android:id="@+id/railSearchLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:duplicateParentState="true"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
+                android:text="Search"
+                android:textColor="@color/rail_icon_text"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:visibility="gone" />
+        </LinearLayout>
+
+        <LinearLayout
             android:id="@+id/railSettings"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:layout_marginTop="8dp"
-            android:background="@drawable/rail_item"
-            android:focusable="true"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:background="@drawable/rail_pill"
             android:clickable="true"
-            android:gravity="center"
-            android:text="⚙"
-            android:textColor="@color/rail_icon_text"
-            android:textSize="20sp" />
+            android:focusable="true"
+            android:gravity="center_vertical"
+            android:minWidth="40dp"
+            android:orientation="horizontal"
+            android:paddingTop="8dp"
+            android:paddingBottom="8dp">
+
+            <TextView
+                android:layout_width="24dp"
+                android:layout_height="wrap_content"
+                android:duplicateParentState="true"
+                android:gravity="center"
+                android:text="⚙"
+                android:textColor="@color/rail_icon_text"
+                android:textSize="18sp" />
+
+            <TextView
+                android:id="@+id/railSettingsLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:duplicateParentState="true"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
+                android:text="Settings"
+                android:textColor="@color/rail_icon_text"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:visibility="gone" />
+        </LinearLayout>
+
     </LinearLayout>
 
     <!-- Cinematic splash: full-bleed artwork (carries the WAHAB TV title),

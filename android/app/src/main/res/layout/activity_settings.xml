@@ -172,6 +172,49 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginTop="26dp"
+        android:text="Trailers"
+        android:textColor="@color/text"
+        android:textSize="17sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:text="The YouTube TV app asks you to pick a profile and loses the video, so trailers play in the app by default."
+        android:textColor="@color/text_dim"
+        android:textSize="13sp" />
+
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:orientation="horizontal">
+
+        <Button
+            android:id="@+id/trailerInApp"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="@drawable/row_selector"
+            android:padding="12dp"
+            android:text="Play in app"
+            android:textSize="13sp" />
+
+        <Button
+            android:id="@+id/trailerYouTube"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="10dp"
+            android:background="@drawable/row_selector"
+            android:padding="12dp"
+            android:text="Open YouTube app"
+            android:textSize="13sp" />
+    </LinearLayout>
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="26dp"
         android:text="Quality profile"
         android:textColor="@color/text"
         android:textSize="17sp"

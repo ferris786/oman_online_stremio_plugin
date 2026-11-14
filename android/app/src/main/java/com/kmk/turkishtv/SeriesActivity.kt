@@ -43,11 +43,20 @@ class SeriesActivity : Activity() {
     private var catalog: List<Api.Series> = emptyList()
     private var seriesById: Map<String, Api.Series> = emptyMap()
 
-    private lateinit var myListRow: Row
-    private lateinit var continueRow: Row
-    private lateinit var becauseRow: Row
-    private lateinit var newRow: Row
-    private lateinit var seriesRow: Row
+    /**
+     * The app is split into sections so one screen is not thirty-five rows
+     * long. Home is personal (My List, Continue Watching, recommendations);
+     * the other three are whole libraries.
+     */
+    enum class Section(val label: String) { HOME("Home"), TURKISH("Turkish"), TV("TV"), MOVIES("Movies") }
+    private var section = Section.HOME
+    private var sectionLoadId = 0
+
+    private var myListRow: Row? = null
+    private var continueRow: Row? = null
+    private var becauseRow: Row? = null
+    private var newRow: Row? = null
+    private var seriesRow: Row? = null
     private var becauseFor: String? = null
 
     /** where kept-list rows are inserted, and which ones are already shown */
@@ -86,25 +95,173 @@ class SeriesActivity : Activity() {
         rowsContainer = findViewById(R.id.rowsContainer)
         splash = findViewById(R.id.splash)
 
-        findViewById<View>(R.id.railHome).setOnClickListener { snapTo(0); focusFirstItem() }
+        findViewById<View>(R.id.railHome).setOnClickListener { goTo(Section.HOME) }
+        findViewById<View>(R.id.railTurkish).setOnClickListener { goTo(Section.TURKISH) }
+        findViewById<View>(R.id.railTv).setOnClickListener { goTo(Section.TV) }
+        findViewById<View>(R.id.railMovies).setOnClickListener { goTo(Section.MOVIES) }
         findViewById<View>(R.id.railSpin).setOnClickListener { startActivity(Intent(this, SpinActivity::class.java)) }
         findViewById<View>(R.id.railSearch).setOnClickListener { startActivity(Intent(this, SearchActivity::class.java)) }
         findViewById<View>(R.id.railSettings).setOnClickListener { startActivity(Intent(this, SettingsActivity::class.java)) }
         bbPrimary.setOnClickListener { onPrimary() }
         bbSecondary.setOnClickListener { onSecondary() }
 
-        // rows in display order; empty ones stay hidden
-        myListRow = addRow("My List")
-        continueRow = addRow("Continue Watching")
-        becauseRow = addRow("Because you watched")
-        newRow = addRow("New this week")
-        seriesRow = addRow("Turkish Series")
-        keptHost = rowsContainer.childCount   // kept lists are inserted here
-
+        setupRail()
         setupSnapping()
         showSplash()
         UpdateChecker.check(this)
         load()
+    }
+
+    // ------------------------------------------------------------ rail
+
+    private val railItems by lazy {
+        listOf(R.id.railHome, R.id.railTurkish, R.id.railTv, R.id.railMovies,
+               R.id.railSpin, R.id.railSearch, R.id.railSettings)
+    }
+    private val railLabels by lazy {
+        listOf(R.id.railHomeLabel, R.id.railTurkishLabel, R.id.railTvLabel, R.id.railMoviesLabel,
+               R.id.railSpinLabel, R.id.railSearchLabel, R.id.railSettingsLabel)
+    }
+
+    /** labels appear only while the rail has focus, so it reads as icons at rest */
+    private fun setupRail() {
+        val show = { on: Boolean ->
+            railLabels.forEach { findViewById<TextView>(it).visibility = if (on) View.VISIBLE else View.GONE }
+        }
+        railItems.forEach { id ->
+            findViewById<View>(id).setOnFocusChangeListener { _, _ ->
+                findViewById<View>(R.id.rail).post {
+                    show(railItems.any { findViewById<View>(it).hasFocus() })
+                }
+            }
+        }
+        paintRail()
+    }
+
+    private fun paintRail() {
+        val selected = when (section) {
+            Section.HOME -> R.id.railHome
+            Section.TURKISH -> R.id.railTurkish
+            Section.TV -> R.id.railTv
+            Section.MOVIES -> R.id.railMovies
+        }
+        railItems.forEach { findViewById<View>(it).isSelected = it == selected }
+    }
+
+    // ------------------------------------------------------------ sections
+
+    private fun goTo(s: Section) {
+        if (s == section && rowsContainer.childCount > 0) { snapTo(0); focusFirstItem(); return }
+        section = s
+        paintRail()
+        buildSection()
+    }
+
+    /** tear the rows down and rebuild them for the current section */
+    private fun buildSection() {
+        val id = ++sectionLoadId
+        rowsContainer.removeAllViews()
+        keptRows.clear()
+        myListRow = null; continueRow = null; becauseRow = null; newRow = null; seriesRow = null
+        becauseFor = null
+        snapTo(0)
+
+        when (section) {
+            Section.HOME -> {
+                myListRow = addRow("My List")
+                continueRow = addRow("Continue Watching")
+                becauseRow = addRow("Because you watched")
+                newRow = addRow("New this week")
+                keptHost = rowsContainer.childCount
+                fillMyListRow(); fillContinueRow(); fillBecauseRow(); fillNewRow()
+                refreshKeptRows()
+                // a taster from each library, so Home is still a place to browse
+                seriesRow = addRow("Turkish Series")
+                seriesRow?.let {
+                    it.list.adapter = SeriesAdapter(catalog, false)
+                    it.view.visibility = if (catalog.isEmpty()) View.GONE else View.VISIBLE
+                }
+                asyncRows(id, listOf(
+                    RowSpec("Popular Series", tv = true) { Api.enSeriesCatalog("top", 0) },
+                    RowSpec("Popular Movies") { Api.enCatalog("top", 0) }))
+            }
+            Section.TURKISH -> {
+                newRow = addRow("New this week")
+                seriesRow = addRow("All Turkish Series")
+                keptHost = rowsContainer.childCount
+                fillNewRow()
+                seriesRow?.let {
+                    it.list.adapter = SeriesAdapter(catalog, false)
+                    it.view.visibility = if (catalog.isEmpty()) View.GONE else View.VISIBLE
+                }
+                // genre rows cost nothing: the catalogue already carries genres
+                val genres = catalog.flatMap { it.genres }.distinct()
+                    .map { g -> g to catalog.filter { it.genres.contains(g) } }
+                    .filter { it.second.size >= 3 }
+                    .sortedByDescending { it.second.size }
+                for ((g, items) in genres) {
+                    val row = addRow(g)
+                    row.list.adapter = SeriesAdapter(items, false)
+                    row.view.visibility = View.VISIBLE
+                }
+                focusFirstItemSoon()
+            }
+            Section.TV -> {
+                keptHost = rowsContainer.childCount
+                asyncRows(id, listOf(
+                    RowSpec("Popular Series", tv = true) { Api.enSeriesCatalog("top", 0) },
+                    RowSpec("New Series", tv = true) { Api.enSeriesCatalog("year", 0) },
+                    RowSpec("Featured Series", tv = true) { Api.enSeriesCatalog("imdbRating", 0) }) +
+                    listOf("Drama", "Comedy", "Crime", "Sci-Fi", "Thriller", "Mystery",
+                           "Animation", "Documentary", "Action", "Fantasy", "Horror", "Family")
+                        .map { g -> RowSpec(g, tv = true) { Api.enSeriesCatalog("top", 0, g) } })
+            }
+            Section.MOVIES -> {
+                keptHost = rowsContainer.childCount
+                asyncRows(id, listOf(
+                    RowSpec("Just added") { Api.enLatestAdded() },
+                    RowSpec("New releases") { Api.enCatalog("year", 0) },
+                    RowSpec("Popular") { Api.enCatalog("top", 0) },
+                    RowSpec("Featured") { Api.enCatalog("imdbRating", 0) }) +
+                    listOf("Action", "Adventure", "Comedy", "Drama", "Sci-Fi", "Thriller",
+                           "Horror", "Crime", "Mystery", "Romance", "Animation", "Family",
+                           "Fantasy", "Documentary", "Biography", "History", "War", "Western",
+                           "Music", "Sport")
+                        .map { g -> RowSpec(g) { Api.enCatalog("top", 0, g) } })
+            }
+        }
+    }
+
+    private inner class RowSpec(val title: String, val tv: Boolean = false,
+                                val fetch: () -> List<Api.EnMovie>)
+
+    /**
+     * Placeholders first so the order is fixed, then fill them from a small
+     * pool - twenty-odd sequential round trips left the lower rows empty for
+     * far too long.
+     */
+    private fun asyncRows(loadId: Int, specs: List<RowSpec>) {
+        val slots = specs.map { addRow(it.title) }
+        Thread {
+            val pool = java.util.concurrent.Executors.newFixedThreadPool(5)
+            specs.forEachIndexed { i, spec ->
+                pool.execute {
+                    val items = try { spec.fetch() } catch (e: Exception) { emptyList() }
+                    if (items.isEmpty()) return@execute
+                    runOnUiThread {
+                        if (isFinishing || loadId != sectionLoadId) return@runOnUiThread
+                        slots[i].list.adapter = if (spec.tv) EnSeriesAdapter(items) else MovieAdapter(items)
+                        slots[i].view.visibility = View.VISIBLE
+                        if (i == 0) focusFirstItemSoon()
+                    }
+                }
+            }
+            pool.shutdown()
+        }.start()
+    }
+
+    private fun focusFirstItemSoon() {
+        rowsContainer.post { if (currentFocus == null || isInside(currentFocus, rowsContainer)) focusFirstItem() }
     }
 
     /**
@@ -113,6 +270,7 @@ class SeriesActivity : Activity() {
      * Now it asks, and offers Settings as a way to stay in the app.
      */
     override fun onBackPressed() {
+        if (section != Section.HOME) { goTo(Section.HOME); return }
         AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog)
             .setTitle("Leave Wahab TV?")
             .setMessage("You are on the home screen. Exit the app, or stay here?")
@@ -126,7 +284,7 @@ class SeriesActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
-        if (catalog.isNotEmpty()) {
+        if (catalog.isNotEmpty() && section == Section.HOME) {
             refreshKeptRows()
             fillMyListRow()
             fillContinueRow()
@@ -146,7 +304,7 @@ class SeriesActivity : Activity() {
         val header = v.findViewById<TextView>(R.id.rowHeader)
         val list = v.findViewById<RecyclerView>(R.id.rowList)
         header.text = title
-        list.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
+        list.layoutManager = RowLayoutManager(this)
         list.setHasFixedSize(true)
         list.itemAnimator = null
         v.visibility = View.GONE
@@ -257,13 +415,7 @@ class SeriesActivity : Activity() {
                 runOnUiThread {
                     catalog = series
                     seriesById = series.associateBy { it.id }
-                    refreshKeptRows()
-                    fillMyListRow()
-                    fillContinueRow()
-                    fillBecauseRow()
-                    fillNewRow()
-                    seriesRow.list.adapter = SeriesAdapter(series, false)
-                    seriesRow.view.visibility = View.VISIBLE
+                    buildSection()
                     initialBillboard()
                     // the splash's end action focuses the first item if it is still up
                     if (splash.visibility != View.VISIBLE) rowsContainer.post { focusFirstItem() }
@@ -274,24 +426,26 @@ class SeriesActivity : Activity() {
                     fadeSplash()
                 }
             }
-            loadMovieRows()
         }.start()
     }
 
     private fun fillContinueRow() {
+        val row = continueRow ?: return
         val entries = WatchState.history(this).filter { !it.isFinished || it.isMovie }.take(10)
-        continueRow.list.adapter = ContinueAdapter(entries)
-        continueRow.view.visibility = if (entries.isEmpty()) View.GONE else View.VISIBLE
+        row.list.adapter = ContinueAdapter(entries)
+        row.view.visibility = if (entries.isEmpty()) View.GONE else View.VISIBLE
     }
 
     private fun fillMyListRow() {
+        val row = myListRow ?: return
         val entries = MyList.all(this)
-        myListRow.list.adapter = MyListAdapter(entries)
-        myListRow.view.visibility = if (entries.isEmpty()) View.GONE else View.VISIBLE
+        row.list.adapter = MyListAdapter(entries)
+        row.view.visibility = if (entries.isEmpty()) View.GONE else View.VISIBLE
     }
 
     /** "Because you watched X": recommendations from the last film finished */
     private fun fillBecauseRow() {
+        val row = becauseRow ?: return
         val last = WatchState.history(this).firstOrNull { it.isMovie && it.isFinished } ?: return
         val imdbId = last.videoId.removePrefix("movie:")
         if (becauseFor == imdbId) return
@@ -299,19 +453,20 @@ class SeriesActivity : Activity() {
         Thread {
             val (title, films) = try { Api.similar(imdbId) } catch (e: Exception) { Pair(null, emptyList()) }
             runOnUiThread {
-                if (isFinishing || films.isEmpty()) return@runOnUiThread
-                becauseRow.header.text = "Because you watched ${title ?: last.seriesName}"
-                becauseRow.list.adapter = SuggestionAdapter(films)
-                becauseRow.view.visibility = View.VISIBLE
+                if (isFinishing || films.isEmpty() || becauseRow !== row) return@runOnUiThread
+                row.header.text = "Because you watched ${title ?: last.seriesName}"
+                row.list.adapter = SuggestionAdapter(films)
+                row.view.visibility = View.VISIBLE
             }
         }.start()
     }
 
     private fun fillNewRow() {
+        val row = newRow ?: return
         val fresh = catalog.filter { it.airedWithinDays(Ui.NEW_WINDOW_DAYS) }
             .sortedByDescending { it.lastAired ?: "" }
-        newRow.list.adapter = SeriesAdapter(fresh, true)
-        newRow.view.visibility = if (fresh.isEmpty()) View.GONE else View.VISIBLE
+        row.list.adapter = SeriesAdapter(fresh, true)
+        row.view.visibility = if (fresh.isEmpty()) View.GONE else View.VISIBLE
     }
 
     /**
@@ -323,61 +478,13 @@ class SeriesActivity : Activity() {
      * Genre rows are filtered server-side, because Cinemeta's own genre
      * filter let a fifth of the row through wrongly.
      */
-    private fun loadMovieRows() {
-        data class Spec(val title: String, val tv: Boolean = false, val fetch: () -> List<Api.EnMovie>)
-        fun genre(g: String) = Spec(g) { Api.enCatalog("top", 0, g) }
-
-        val wanted = listOf(
-            Spec("Popular Series", tv = true) { Api.enSeriesCatalog("top", 0) },
-            Spec("New Series", tv = true) { Api.enSeriesCatalog("year", 0) },
-            Spec("Featured Series", tv = true) { Api.enSeriesCatalog("imdbRating", 0) },
-            Spec("Drama Series", tv = true) { Api.enSeriesCatalog("top", 0, "Drama") },
-            Spec("Comedy Series", tv = true) { Api.enSeriesCatalog("top", 0, "Comedy") },
-            Spec("Crime Series", tv = true) { Api.enSeriesCatalog("top", 0, "Crime") },
-            Spec("Sci-Fi Series", tv = true) { Api.enSeriesCatalog("top", 0, "Sci-Fi") },
-            Spec("Animated Series", tv = true) { Api.enSeriesCatalog("top", 0, "Animation") },
-            Spec("Just added") { Api.enLatestAdded() },
-            Spec("New releases") { Api.enCatalog("year", 0) },
-            Spec("Popular Movies") { Api.enCatalog("top", 0) },
-            Spec("Featured") { Api.enCatalog("imdbRating", 0) },
-            Spec("Highly rated this year") { Api.enCatalog("imdbRating", 0, "Drama") },
-            genre("Action"), genre("Adventure"), genre("Comedy"), genre("Drama"),
-            genre("Sci-Fi"), genre("Thriller"), genre("Horror"), genre("Crime"),
-            genre("Mystery"), genre("Romance"), genre("Animation"), genre("Family"),
-            genre("Fantasy"), genre("Documentary"), genre("Biography"),
-            genre("History"), genre("War"), genre("Western"), genre("Music"), genre("Sport")
-        )
-
-        // Placeholders first so the rows keep their order no matter which
-        // request finishes first, then fill them from a small thread pool -
-        // 25 sequential round trips made the lower rows take far too long.
-        val slots = ArrayList<Row>(wanted.size)
-        val latch = java.util.concurrent.CountDownLatch(1)
-        runOnUiThread {
-            wanted.forEach { slots.add(addRow(it.title)) }
-            latch.countDown()
-        }
-        latch.await()
-
-        val pool = java.util.concurrent.Executors.newFixedThreadPool(5)
-        wanted.forEachIndexed { i, spec ->
-            pool.execute {
-                val movies = try { spec.fetch() } catch (e: Exception) { emptyList() }
-                if (movies.isEmpty()) return@execute
-                runOnUiThread {
-                    if (isFinishing) return@runOnUiThread
-                    slots[i].list.adapter = if (spec.tv) EnSeriesAdapter(movies) else MovieAdapter(movies)
-                    slots[i].view.visibility = View.VISIBLE
-                }
-            }
-        }
-        pool.shutdown()
-    }
-
     private fun focusFirstItem(attempt: Int = 0) {
-        val row = listOf(myListRow, continueRow, newRow, seriesRow).firstOrNull { it.view.visibility == View.VISIBLE } ?: return
-        row.list.post {
-            val child = row.list.getChildAt(0)
+        val row = (0 until rowsContainer.childCount)
+            .map { rowsContainer.getChildAt(it) }
+            .firstOrNull { it.visibility == View.VISIBLE } ?: return
+        val list = row.findViewById<RecyclerView>(R.id.rowList) ?: return
+        list.post {
+            val child = list.getChildAt(0)
             if (child != null) child.requestFocus()
             else if (attempt < 5) focusFirstItem(attempt + 1)
         }
@@ -815,6 +922,21 @@ class SeriesActivity : Activity() {
                     e.isEnSeries -> openEnSeriesFromHistory(e, resume = true)
                     else -> playHistory(e)
                 }
+            }
+            holder.itemView.setOnLongClickListener {
+                AlertDialog.Builder(this@SeriesActivity, android.R.style.Theme_Material_Dialog)
+                    .setTitle("Remove from Continue Watching?")
+                    .setMessage(e.seriesName + (if (e.isMovie) "" else "  ·  S${e.season} E${e.episode}") +
+                        "\n\nThis forgets where you were. It does not touch My List.")
+                    .setPositiveButton("Remove") { _, _ ->
+                        WatchState.removeHistory(this@SeriesActivity, e.videoId)
+                        WatchState.clearPosition(this@SeriesActivity, e.videoId)
+                        fillContinueRow()
+                        focusFirstItem()
+                    }
+                    .setNegativeButton("Keep", null)
+                    .show()
+                true
             }
         }
     }

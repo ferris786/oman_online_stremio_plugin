@@ -20,6 +20,7 @@ class SettingsActivity : Activity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_settings)
 
+        val prefsAll = getSharedPreferences("settings", MODE_PRIVATE)
         val input = findViewById<EditText>(R.id.torboxKeyInput)
         val status = findViewById<TextView>(R.id.torboxStatus)
         val testBtn = findViewById<Button>(R.id.testBtn)
@@ -127,6 +128,18 @@ class SettingsActivity : Activity() {
         findViewById<Button>(R.id.updateRetryBtn).setOnClickListener {
             UpdateChecker.reinstall(this) { msg -> updateStatus.text = msg }
         }
+
+        // ---- Trailers: in-app embed, or hand off to the YouTube app ----
+        val tInApp = findViewById<Button>(R.id.trailerInApp)
+        val tYouTube = findViewById<Button>(R.id.trailerYouTube)
+        fun paintTrailer() {
+            val mode = prefsAll.getString("trailer_mode", "inapp")
+            tInApp.setTextColor(resources.getColor(if (mode != "youtube") R.color.accent else R.color.text_dim))
+            tYouTube.setTextColor(resources.getColor(if (mode == "youtube") R.color.accent else R.color.text_dim))
+        }
+        tInApp.setOnClickListener { prefsAll.edit().putString("trailer_mode", "inapp").apply(); paintTrailer() }
+        tYouTube.setOnClickListener { prefsAll.edit().putString("trailer_mode", "youtube").apply(); paintTrailer() }
+        paintTrailer()
 
         // ---- Player skin (player chrome only, not the rest of the app) ----
         val skinBtns = mapOf(

@@ -2,6 +2,7 @@ package com.kmk.turkishtv
 
 import android.app.Activity
 import android.app.AlertDialog
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.view.Gravity
@@ -18,15 +19,35 @@ import android.widget.Toast
  */
 object Extras {
 
-    /** Open a YouTube video id in the YouTube app, falling back to any handler. */
+    /**
+     * Play a trailer. In-app by default (YouTube's embedded player in a
+     * WebView): handing it to the YouTube TV app lands on the account
+     * picker on a cold start and loses the video, so you pick a profile and
+     * never reach the trailer. Settings can switch back to the app.
+     */
     fun playTrailer(activity: Activity, ytId: String, title: String) {
-        val app = Intent(Intent.ACTION_VIEW, Uri.parse("vnd.youtube:$ytId"))
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        val web = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/watch?v=$ytId"))
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        for (i in listOf(app, web)) {
+        val useApp = activity.getSharedPreferences("settings", Context.MODE_PRIVATE)
+            .getString("trailer_mode", "inapp") == "youtube"
+        if (!useApp) {
+            activity.startActivity(Intent(activity, TrailerActivity::class.java)
+                .putExtra("ytId", ytId).putExtra("title", title))
+            return
+        }
+        openInYouTube(activity, ytId, title)
+    }
+
+    /** Explicit packages first - a chooser or an implicit match is what lands on the profile screen. */
+    fun openInYouTube(activity: Activity, ytId: String, title: String) {
+        val url = "https://www.youtube.com/watch?v=$ytId"
+        val attempts = listOf(
+            Intent(Intent.ACTION_VIEW, Uri.parse(url)).setPackage("com.google.android.youtube.tv"),
+            Intent(Intent.ACTION_VIEW, Uri.parse(url)).setPackage("com.google.android.youtube"),
+            Intent(Intent.ACTION_VIEW, Uri.parse("vnd.youtube:$ytId")),
+            Intent(Intent.ACTION_VIEW, Uri.parse(url))
+        )
+        for (i in attempts) {
             try {
-                activity.startActivity(i)
+                activity.startActivity(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 Toast.makeText(activity, "Trailer: $title", Toast.LENGTH_SHORT).show()
                 return
             } catch (e: Exception) { /* try the next one */ }

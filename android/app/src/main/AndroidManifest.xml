@@ -85,6 +85,11 @@
             android:screenOrientation="landscape" />
 
         <activity
+            android:name=".TrailerActivity"
+            android:exported="false"
+            android:screenOrientation="landscape" />
+
+        <activity
             android:name=".SpinActivity"
             android:exported="false"
             android:screenOrientation="landscape" />
