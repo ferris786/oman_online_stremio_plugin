@@ -198,9 +198,8 @@ class EnSeriesActivity : Activity() {
         val t = target
         btnResume.text = when {
             t == null -> "▶  Play"
-            last != null && idx >= 0 && !last.isFinished -> "▶  Resume  ·  ${t.tag}" +
-                (last.takeIf { it.durationMs > 0 }?.let { "  ·  ${it.minutesLeft} min left" } ?: "")
-            idx >= 0 -> "▶  Play next  ·  ${t.tag}"
+            last != null && idx >= 0 && !last.isFinished -> "▶  Resume  ·  ${t.tag}"
+            idx >= 0 -> "▶  Next  ·  ${t.tag}"
             else -> "▶  Play  ·  ${t.tag}"
         }
     }

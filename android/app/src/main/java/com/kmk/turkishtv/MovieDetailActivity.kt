@@ -107,7 +107,8 @@ class MovieDetailActivity : Activity() {
             if (col != null) runOnUiThread {
                 if (isFinishing) return@runOnUiThread
                 val btn = findViewById<TextView>(R.id.mCollection)
-                btn.text = "◈  ${col.second.removeSuffix(" Collection")}"
+                val short = col.second.removeSuffix(" Collection")
+                btn.text = "◈  " + (if (short.length > 20) short.take(19).trimEnd() + "…" else short)
                 btn.setOnClickListener {
                     startActivity(Intent(this, SpinActivity::class.java)
                         .putExtra("tmdbCollectionId", col.first)

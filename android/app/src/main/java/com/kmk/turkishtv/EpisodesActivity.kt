@@ -168,12 +168,13 @@ class EpisodesActivity : Activity() {
         }
         targetIsResume = last != null && idx >= 0 && !last.isFinished
         val t = target
+        // kept short: the button is single-line now, and the minutes-left
+        // detail already shows on the episode card itself
         btnResume.text = when {
             t == null -> "▶  Play"
-            targetIsResume -> "▶  Resume  ·  Episode ${t.absNumber}" +
-                (last?.takeIf { it.durationMs > 0 }?.let { "  ·  ${it.minutesLeft} min left" } ?: "")
-            idx >= 0 -> "▶  Play next  ·  Episode ${t.absNumber}"
-            else -> "▶  Play  ·  Episode ${t.absNumber}"
+            targetIsResume -> "▶  Resume  ·  Ep ${t.absNumber}"
+            idx >= 0 -> "▶  Next  ·  Ep ${t.absNumber}"
+            else -> "▶  Play  ·  Ep ${t.absNumber}"
         }
     }
 
