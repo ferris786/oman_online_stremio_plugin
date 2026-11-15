@@ -22,6 +22,9 @@ class App : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // First thing up, so a crash during start-up is still recorded, and
+        // anything left unsent from the last run gets posted.
+        Diag.init(this)
         Coil.setImageLoader {
             ImageLoader.Builder(this)
                 .memoryCache {
@@ -41,10 +44,29 @@ class App : Application() {
         }
     }
 
+    /**
+     * Memory pressure is one of the two live theories for playback stopping
+     * partway through, so every signal is recorded with the heap figures
+     * attached. A TRIM_MEMORY_COMPLETE here followed by silence is the
+     * system killing us; a stop with no trim at all means it was the stream.
+     */
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
+        Diag.warn("memory", "trim level $level (${trimName(level)})", Diag.memory())
         if (level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) {
             runCatching { Coil.imageLoader(this).memoryCache?.clear() }
+            Diag.flushSoon()
         }
+    }
+
+    private fun trimName(level: Int): String = when (level) {
+        ComponentCallbacks2.TRIM_MEMORY_COMPLETE -> "complete - next to be killed"
+        ComponentCallbacks2.TRIM_MEMORY_MODERATE -> "moderate"
+        ComponentCallbacks2.TRIM_MEMORY_BACKGROUND -> "background"
+        ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN -> "ui hidden"
+        ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL -> "running critical"
+        ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW -> "running low"
+        ComponentCallbacks2.TRIM_MEMORY_RUNNING_MODERATE -> "running moderate"
+        else -> "?"
     }
 }

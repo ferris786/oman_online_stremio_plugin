@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The name under an avatar sits on a dark ground in every state, so it
+     brightens on focus rather than inverting the way the sidebar rows do. -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_focused="true" android:color="@color/white" />
+    <item android:color="@color/text_dim" />
+</selector>

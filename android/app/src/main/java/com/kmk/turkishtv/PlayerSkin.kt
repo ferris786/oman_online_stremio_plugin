@@ -39,13 +39,13 @@ enum class PlayerSkin(
         private const val PREF_KEY = "player_skin"
 
         fun load(ctx: Context): PlayerSkin {
-            val k = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            val k = Profiles.userPrefs(ctx)
                 .getString(PREF_KEY, CLASSIC.key)
             return entries.firstOrNull { it.key == k } ?: CLASSIC
         }
 
         fun save(ctx: Context, skin: PlayerSkin) {
-            ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            Profiles.userPrefs(ctx)
                 .edit().putString(PREF_KEY, skin.key).apply()
         }
     }

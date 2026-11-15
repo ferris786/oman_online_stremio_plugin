@@ -51,8 +51,15 @@ class SeriesActivity : Activity() {
     enum class Section(val label: String) {
         HOME("Home"), TURKISH("Turkish"), TV("TV"), MOVIES("Movies"), COLLECTIONS("Collections")
     }
+    /** sidebar widths in dp: icons only, and open with labels */
+    private val RAIL_W_REST = 84
+    private val RAIL_W_OPEN = 246
+
     private var section = Section.HOME
     private var sectionLoadId = 0
+
+    /** which profile the rows on screen belong to, so a switch rebuilds them */
+    private var shownProfile: String? = null
 
     private var myListRow: Row? = null
     private var continueRow: Row? = null
@@ -105,6 +112,9 @@ class SeriesActivity : Activity() {
         findViewById<View>(R.id.railSpin).setOnClickListener { startActivity(Intent(this, SpinActivity::class.java)) }
         findViewById<View>(R.id.railSearch).setOnClickListener { startActivity(Intent(this, SearchActivity::class.java)) }
         findViewById<View>(R.id.railSettings).setOnClickListener { startActivity(Intent(this, SettingsActivity::class.java)) }
+        findViewById<View>(R.id.railProfile).setOnClickListener {
+            startActivity(Intent(this, ProfilesActivity::class.java))
+        }
         bbPrimary.setOnClickListener { onPrimary() }
         bbSecondary.setOnClickListener { onSecondary() }
 
@@ -112,33 +122,88 @@ class SeriesActivity : Activity() {
         setupSnapping()
         showSplash()
         UpdateChecker.check(this)
+        shownProfile = Profiles.activeId(this)
+        Diag.log("home", "opened", mapOf("profile" to Profiles.activeName(this)))
+
+        // More than one person uses the box: ask who, once per launch.
+        if (Profiles.multiple(this) && !ProfilesActivity.askedThisLaunch) {
+            ProfilesActivity.askedThisLaunch = true
+            startActivity(Intent(this, ProfilesActivity::class.java))
+        }
         load()
     }
 
     // ------------------------------------------------------------ rail
 
     private val railItems by lazy {
-        listOf(R.id.railHome, R.id.railTurkish, R.id.railTv, R.id.railMovies, R.id.railCollections,
-               R.id.railSpin, R.id.railSearch, R.id.railSettings)
+        listOf(R.id.railProfile, R.id.railHome, R.id.railTurkish, R.id.railTv, R.id.railMovies,
+               R.id.railCollections, R.id.railSpin, R.id.railSearch, R.id.railSettings)
     }
     private val railLabels by lazy {
-        listOf(R.id.railHomeLabel, R.id.railTurkishLabel, R.id.railTvLabel, R.id.railMoviesLabel,
-               R.id.railCollectionsLabel, R.id.railSpinLabel, R.id.railSearchLabel, R.id.railSettingsLabel)
+        listOf(R.id.railProfileText, R.id.railHomeLabel, R.id.railTurkishLabel, R.id.railTvLabel,
+               R.id.railMoviesLabel, R.id.railCollectionsLabel, R.id.railSpinLabel,
+               R.id.railSearchLabel, R.id.railSettingsLabel)
+    }
+    /** the sections, for the selected-state paint - the profile chip is not one */
+    private val railSections by lazy { railItems.drop(1) }
+
+    private var railOpen = false
+
+    /**
+     * The sidebar is a narrow column of icons at rest and a labelled panel
+     * while it has focus. Both widths are real layout widths rather than a
+     * wrap_content guess, so the icons sit in the same place in both states
+     * and the panel does not jump as labels appear.
+     */
+    private fun setRailOpen(open: Boolean) {
+        if (open == railOpen) return
+        railOpen = open
+        val rail = findViewById<View>(R.id.rail)
+        val from = rail.layoutParams.width.takeIf { it > 0 } ?: Ui.dp(this, RAIL_W_REST)
+        val to = Ui.dp(this, if (open) RAIL_W_OPEN else RAIL_W_REST)
+        // labels go in before the widening so they are measured, and out
+        // after the narrowing so they are never clipped mid-animation
+        if (open) railLabels.forEach { findViewById<View>(it).visibility = View.VISIBLE }
+        android.animation.ValueAnimator.ofInt(from, to).apply {
+            duration = 170
+            interpolator = DecelerateInterpolator()
+            addUpdateListener { a ->
+                rail.layoutParams.width = a.animatedValue as Int
+                rail.requestLayout()
+            }
+            addListener(object : android.animation.AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: android.animation.Animator) {
+                    if (!railOpen) railLabels.forEach { findViewById<View>(it).visibility = View.GONE }
+                }
+            })
+            start()
+        }
     }
 
-    /** labels appear only while the rail has focus, so it reads as icons at rest */
     private fun setupRail() {
-        val show = { on: Boolean ->
-            railLabels.forEach { findViewById<TextView>(it).visibility = if (on) View.VISIBLE else View.GONE }
-        }
         railItems.forEach { id ->
             findViewById<View>(id).setOnFocusChangeListener { _, _ ->
+                // run after the focus change settles: on a move WITHIN the
+                // rail, one view loses focus before the next gains it
                 findViewById<View>(R.id.rail).post {
-                    show(railItems.any { findViewById<View>(it).hasFocus() })
+                    setRailOpen(railItems.any { findViewById<View>(it).hasFocus() })
                 }
             }
         }
+        paintProfile()
         paintRail()
+    }
+
+    /** the avatar carries the profile's own colour, so a glance tells you who */
+    private fun paintProfile() {
+        val p = Profiles.active(this)
+        findViewById<TextView>(R.id.railAvatar).apply {
+            text = p.initial
+            backgroundTintList = android.content.res.ColorStateList.valueOf(p.colour)
+        }
+        findViewById<TextView>(R.id.railProfileName).text = p.name
+        findViewById<TextView>(R.id.railProfileSub).text =
+            if (Profiles.multiple(this)) "Switch profile" else "Add a profile"
     }
 
     private fun paintRail() {
@@ -149,7 +214,7 @@ class SeriesActivity : Activity() {
             Section.MOVIES -> R.id.railMovies
             Section.COLLECTIONS -> R.id.railCollections
         }
-        railItems.forEach { findViewById<View>(it).isSelected = it == selected }
+        railSections.forEach { findViewById<View>(it).isSelected = it == selected }
     }
 
     // ------------------------------------------------------------ sections
@@ -419,6 +484,18 @@ class SeriesActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        // Came back from the picker as somebody else: the rows on screen are
+        // the previous viewer's, so paint the chip and rebuild from scratch.
+        val now = Profiles.activeId(this)
+        if (shownProfile != null && shownProfile != now) {
+            shownProfile = now
+            paintProfile()
+            section = Section.HOME
+            paintRail()
+            buildSection()
+            return
+        }
+        paintProfile()
         if (catalog.isNotEmpty() && section == Section.HOME) {
             refreshKeptRows()
             fillMyListRow()

@@ -103,6 +103,11 @@
             android:screenOrientation="landscape" />
 
         <activity
+            android:name=".ProfilesActivity"
+            android:exported="false"
+            android:screenOrientation="landscape" />
+
+        <activity
             android:name=".PlayerActivity"
             android:exported="false"
             android:keepScreenOn="true"

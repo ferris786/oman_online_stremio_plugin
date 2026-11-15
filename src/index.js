@@ -24,6 +24,10 @@ const urlModule = require("url");
 
 const app = express();
 app.use(cors());
+// A batch of device log events is larger than the default 100kb body limit.
+// This has to be mounted BEFORE the global parser: body-parser marks the
+// request once parsed, so the general one below then skips it.
+app.use("/log", express.json({ limit: "256kb" }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -470,6 +474,26 @@ app.get("/en/list/:id", async (req, res) => {
     }
 });
 
+// ---------------------------------------------------------------------------
+// Device logs. The TV is the only place that knows why playback stopped and
+// its logcat is unreachable, so the app posts events here.
+// ---------------------------------------------------------------------------
+const applog = require("./applog");
+
+app.post("/log", (req, res) => {
+    const n = applog.ingest(req.body, req.ip);
+    res.json({ ok: true, stored: n });
+});
+
+// Reading needs the key; writing deliberately does not (this repo is public,
+// so a secret shipped in the app would be no secret at all).
+app.get("/log/tail", (req, res) => {
+    const key = process.env.WAHAB_LOG_KEY;
+    if (!key || req.query.key !== key) return res.status(403).json({ error: "forbidden" });
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    res.end(applog.tail(parseInt(req.query.n) || 300, req.query.q).join("\n"));
+});
+
 /**
  * Trailer page, served from THIS origin so the YouTube embed works.
  *
@@ -801,6 +825,18 @@ const addonRouter = getRouter(addonInterface);
 app.use("/", addonRouter);
 
 const PORT = process.env.PORT || 7000;
+/**
+ * Last resort. A malformed or oversized body otherwise gets Express's
+ * default HTML error page, which prints a stack trace with server paths in
+ * it - not something a publicly reachable endpoint should hand out.
+ */
+app.use((err, req, res, next) => {
+    if (res.headersSent) return next(err);
+    const status = err && err.status ? err.status : 500;
+    if (status >= 500) console.error("[error]", req.method, req.path, err && err.message);
+    res.status(status).json({ error: status === 413 ? "too large" : "bad request" });
+});
+
 app.listen(PORT, () => {
     console.log(`Addon running on http://localhost:${PORT}`);
 

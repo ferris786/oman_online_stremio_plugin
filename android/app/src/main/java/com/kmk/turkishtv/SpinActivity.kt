@@ -59,9 +59,34 @@ class SpinActivity : Activity() {
         grid.layoutManager = GridLayoutManager(this, 6)
 
         findViewById<TextView>(R.id.spinAgain).setOnClickListener {
-            if (intent.getStringExtra("tmdbCollectionId") != null) finish() else spin()
+            if (fixedList()) finish() else spin()
         }
         keepBtn.setOnClickListener { toggleKeep() }
+
+        // "More like this" from a movie page: TMDB's recommendations for one
+        // film, shown in the same grid as a reel list
+        val similarTo = intent.getStringExtra("similarImdb")
+        if (similarTo != null) {
+            val subject = intent.getStringExtra("similarTitle") ?: "this film"
+            spinName.text = "More like $subject"
+            keepBtn.visibility = View.GONE
+            findViewById<TextView>(R.id.spinAgain).text = "◀  Back"
+            Thread {
+                val found = try { Api.similar(similarTo) } catch (e: Exception) { null }
+                runOnUiThread {
+                    if (isFinishing) return@runOnUiThread
+                    val films = found?.second ?: emptyList()
+                    if (films.isEmpty()) {
+                        Toast.makeText(this, "Nothing similar came back for $subject",
+                            Toast.LENGTH_LONG).show()
+                        finish(); return@runOnUiThread
+                    }
+                    showList(Api.MovieList("similar:$similarTo",
+                        "More like ${found?.first ?: subject}", null, films))
+                }
+            }.start()
+            return
+        }
 
         // opened straight onto a franchise from a movie page - no spin
         val colId = intent.getStringExtra("tmdbCollectionId")
@@ -103,8 +128,13 @@ class SpinActivity : Activity() {
 
     // ---------------------------------------------------------- the spin
 
+    /** opened on a specific list, so there is nothing to spin for */
+    private fun fixedList(): Boolean =
+        intent.getStringExtra("tmdbCollectionId") != null ||
+        intent.getStringExtra("similarImdb") != null
+
     private fun recent(): MutableList<String> {
-        val raw = getSharedPreferences("settings", MODE_PRIVATE).getString(RECENT_KEY, "") ?: ""
+        val raw = Profiles.userPrefs(this).getString(RECENT_KEY, "") ?: ""
         return raw.split(",").filter { it.isNotBlank() }.toMutableList()
     }
 
@@ -112,7 +142,7 @@ class SpinActivity : Activity() {
         val r = recent()
         r.remove(id)
         r.add(0, id)
-        getSharedPreferences("settings", MODE_PRIVATE).edit()
+        Profiles.userPrefs(this).edit()
             .putString(RECENT_KEY, r.take(RECENT_MEMORY).joinToString(",")).apply()
     }
 
@@ -199,6 +229,7 @@ class SpinActivity : Activity() {
             Toast.makeText(this, "Franchises live in the Collections tab already", Toast.LENGTH_LONG).show()
             return
         }
+        if (intent.getStringExtra("similarImdb") != null) return
         if (KeptLists.has(this, l.id)) {
             KeptLists.remove(this, l.id)
             Toast.makeText(this, "Removed from your home screen", Toast.LENGTH_SHORT).show()

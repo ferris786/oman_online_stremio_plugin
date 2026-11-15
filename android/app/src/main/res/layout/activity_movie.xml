@@ -166,7 +166,11 @@
                 android:textStyle="bold" />
         </LinearLayout>
 
-        <!-- secondary actions -->
+        <!-- Secondary actions, on two rows.
+             Five of these on one line needs about 760dp inside a 660dp
+             column, which is what squeezed the labels until they wrapped
+             and pushed Reviews off the right edge. Each row below is
+             measured to fit: ~400dp and ~430dp. -->
         <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -184,24 +188,6 @@
                 android:paddingTop="9dp" android:paddingBottom="9dp"
                 android:singleLine="true"
                 android:text="＋  My List"
-                android:textColor="@color/btn_primary_text"
-                android:textSize="14sp"
-                android:textStyle="bold" />
-
-            <TextView
-                android:id="@+id/mCollection"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
-                android:background="@drawable/btn_primary"
-                android:focusable="true"
-                android:clickable="true"
-                android:paddingStart="16dp" android:paddingEnd="16dp"
-                android:paddingTop="9dp" android:paddingBottom="9dp"
-                android:singleLine="true"
-                android:ellipsize="end"
-                android:maxWidth="230dp"
-                android:text="◈  Collection"
                 android:textColor="@color/btn_primary_text"
                 android:textSize="14sp"
                 android:textStyle="bold" />
@@ -238,6 +224,46 @@
                 android:textColor="@color/btn_primary_text"
                 android:textSize="14sp"
                 android:textStyle="bold" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/mSimilar"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@drawable/btn_primary"
+                android:focusable="true"
+                android:clickable="true"
+                android:paddingStart="16dp" android:paddingEnd="16dp"
+                android:paddingTop="9dp" android:paddingBottom="9dp"
+                android:singleLine="true"
+                android:text="◇  More like this"
+                android:textColor="@color/btn_primary_text"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/mCollection"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/btn_primary"
+                android:focusable="true"
+                android:clickable="true"
+                android:paddingStart="16dp" android:paddingEnd="16dp"
+                android:paddingTop="9dp" android:paddingBottom="9dp"
+                android:singleLine="true"
+                android:text="◈  Collection"
+                android:textColor="@color/btn_primary_text"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:ellipsize="end"
+                android:maxWidth="230dp" />
         </LinearLayout>
 
         <TextView

@@ -119,6 +119,27 @@ class SettingsActivity : Activity() {
             }.start()
         }
 
+        // ---- Profiles ----
+        val profilesStatus = findViewById<TextView>(R.id.profilesStatus)
+        fun paintProfilesStatus() {
+            val all = Profiles.all(this)
+            profilesStatus.text = if (all.size == 1) "Watching as ${all[0].name}"
+                else "${all.size} profiles · watching as ${Profiles.active(this).name}"
+        }
+        paintProfilesStatus()
+        findViewById<Button>(R.id.profilesBtn).setOnClickListener {
+            startActivity(android.content.Intent(this, ProfilesActivity::class.java))
+        }
+
+        // ---- Diagnostics: the remote log that explains a stopped stream ----
+        val diagCb = findViewById<CheckBox>(R.id.diagRemote)
+        diagCb.isChecked = Diag.enabled(this)
+        diagCb.setOnCheckedChangeListener { _, v ->
+            Diag.setEnabled(this, v)
+            Toast.makeText(this, if (v) "Playback logs will be sent" else "Logging off",
+                Toast.LENGTH_SHORT).show()
+        }
+
         // ---- Updates: a deliberate check, and a way out of a stuck download ----
         val updateStatus = findViewById<TextView>(R.id.updateStatus)
         findViewById<Button>(R.id.updateCheckBtn).setOnClickListener {
@@ -233,6 +254,8 @@ class SettingsActivity : Activity() {
             }.start()
         }
 
+        onResumeHook = { paintProfilesStatus() }
+
         saveBtn.setOnClickListener {
             val key = input.text.toString().trim()
             if (key.isEmpty()) {
@@ -244,5 +267,13 @@ class SettingsActivity : Activity() {
             }
             Toast.makeText(this, "Saved", Toast.LENGTH_SHORT).show()
         }
+    }
+
+    /** set in onCreate; repaints the profile line after the picker closes */
+    private var onResumeHook: (() -> Unit)? = null
+
+    override fun onResume() {
+        super.onResume()
+        onResumeHook?.invoke()
     }
 }

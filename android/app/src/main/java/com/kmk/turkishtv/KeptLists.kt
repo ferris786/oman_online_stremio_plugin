@@ -15,7 +15,7 @@ object KeptLists {
 
     /** id to title, newest first */
     fun all(ctx: Context): List<Pair<String, String>> {
-        val raw = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY, null)
+        val raw = Profiles.userPrefs(ctx).getString(KEY, null)
             ?: return emptyList()
         return try {
             val arr = JSONArray(raw)
@@ -45,17 +45,17 @@ object KeptLists {
         list.forEach { (id, title) ->
             arr.put(org.json.JSONObject().put("id", id).put("title", title))
         }
-        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        Profiles.userPrefs(ctx)
             .edit().putString(KEY, arr.toString()).apply()
     }
 
     // ---- one-time feature introduction ----
 
     fun wizardSeen(ctx: Context): Boolean =
-        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean("reel_wizard_seen", false)
+        Profiles.userPrefs(ctx).getBoolean("reel_wizard_seen", false)
 
     fun markWizardSeen(ctx: Context) {
-        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        Profiles.userPrefs(ctx)
             .edit().putBoolean("reel_wizard_seen", true).apply()
     }
 }

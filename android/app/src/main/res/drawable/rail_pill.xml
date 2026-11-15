@@ -1,21 +1,25 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Sidebar row. Focus is a solid cream fill (the strongest signal on a TV,
+     read from across a room); the section you are IN is a quieter gold wash
+     so "where I am" and "where the remote is" never look the same. -->
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:state_focused="true">
         <shape android:shape="rectangle">
-            <solid android:color="#f2f2f2" />
-            <corners android:radius="20dp" />
+            <solid android:color="#f4efe2" />
+            <corners android:radius="12dp" />
         </shape>
     </item>
     <item android:state_selected="true">
         <shape android:shape="rectangle">
-            <solid android:color="#33ffffff" />
-            <corners android:radius="20dp" />
+            <solid android:color="#2ee0b34d" />
+            <stroke android:width="1dp" android:color="#59e0b34d" />
+            <corners android:radius="12dp" />
         </shape>
     </item>
     <item>
         <shape android:shape="rectangle">
             <solid android:color="#00000000" />
-            <corners android:radius="20dp" />
+            <corners android:radius="12dp" />
         </shape>
     </item>
 </selector>

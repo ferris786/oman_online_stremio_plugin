@@ -81,6 +81,14 @@ class MovieDetailActivity : Activity() {
             trailerId?.let { Extras.playTrailer(this, it, movie?.name ?: "") }
         }
 
+        // TMDB's recommendations for this film, in the same grid the Reel
+        // and the franchises use
+        findViewById<TextView>(R.id.mSimilar).setOnClickListener {
+            startActivity(Intent(this, SpinActivity::class.java)
+                .putExtra("similarImdb", imdbId)
+                .putExtra("similarTitle", movie?.name ?: ""))
+        }
+
         val autoplay = intent.getBooleanExtra("autoplay", false)
 
         Thread {

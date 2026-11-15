@@ -32,7 +32,7 @@ object Collections {
 
     data class Collection(val name: String, val items: List<Item>, val createdAt: Long)
 
-    private fun prefs(ctx: Context) = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+    private fun prefs(ctx: Context) = Profiles.userPrefs(ctx)
 
     fun all(ctx: Context): List<Collection> {
         val raw = prefs(ctx).getString(KEY, null) ?: return emptyList()

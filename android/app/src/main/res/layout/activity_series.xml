@@ -141,324 +141,368 @@
             android:orientation="vertical" />
     </com.kmk.turkishtv.SnapScrollView>
 
-    <!-- Left rail: sections on top, tools below. Collapsed to glyphs;
-         labels slide in while the rail has focus. -->
+    <!-- Left sidebar.
+         It used to be a 40dp strip of glyphs, which read as a row of
+         floating symbols rather than navigation. It is now a real panel:
+         its own ground, 56dp icon cells, 46dp rows, and the profile at the
+         top where the person using it belongs. Widths are animated by
+         SeriesActivity between RAIL_W_REST and RAIL_W_OPEN - labels only
+         appear once it has focus, so at rest it still gives the artwork
+         the whole screen. -->
     <LinearLayout
         android:id="@+id/rail"
-        android:layout_width="wrap_content"
+        android:layout_width="84dp"
         android:layout_height="match_parent"
-        android:background="@drawable/scrim_left"
+        android:background="@drawable/rail_panel"
         android:orientation="vertical"
-        android:paddingStart="12dp"
-        android:paddingEnd="12dp"
-        android:paddingTop="20dp">
+        android:paddingStart="14dp"
+        android:paddingEnd="14dp"
+        android:paddingTop="18dp">
 
-        <TextView
-            android:layout_width="40dp"
-            android:layout_height="wrap_content"
-            android:fontFamily="@font/cinzel_bold"
-            android:gravity="center"
-            android:text="W"
-            android:textColor="@color/accent"
-            android:textSize="24sp"
-            android:layout_marginBottom="12dp" />
-
+        <!-- who is watching; opens the profile picker -->
         <LinearLayout
-            android:id="@+id/railHome"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
+            android:id="@+id/railProfile"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
             android:background="@drawable/rail_pill"
             android:clickable="true"
             android:focusable="true"
             android:gravity="center_vertical"
-            android:minWidth="40dp"
-            android:orientation="horizontal"
-            android:paddingTop="8dp"
-            android:paddingBottom="8dp">
+            android:orientation="horizontal">
+
+            <FrameLayout
+                android:layout_width="56dp"
+                android:layout_height="match_parent">
+
+                <TextView
+                    android:id="@+id/railAvatar"
+                    android:layout_width="38dp"
+                    android:layout_height="38dp"
+                    android:layout_gravity="center"
+                    android:background="@drawable/avatar_circle"
+                    android:duplicateParentState="true"
+                    android:fontFamily="@font/cinzel_bold"
+                    android:gravity="center"
+                    android:text="W"
+                    android:textColor="#1a1408"
+                    android:textSize="18sp" />
+            </FrameLayout>
+
+            <LinearLayout
+                android:id="@+id/railProfileText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:visibility="gone">
+
+                <TextView
+                    android:id="@+id/railProfileName"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:duplicateParentState="true"
+                    android:singleLine="true"
+                    android:text="Wahab"
+                    android:textColor="@color/rail_icon_text"
+                    android:textSize="15sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/railProfileSub"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:duplicateParentState="true"
+                    android:singleLine="true"
+                    android:text="Switch profile"
+                    android:textColor="@color/text_dim"
+                    android:textSize="11sp" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:layout_marginTop="12dp"
+            android:layout_marginBottom="4dp"
+            android:background="@drawable/rail_divider" />
+
+        <LinearLayout
+            android:id="@+id/railHome"
+            android:layout_width="match_parent"
+            android:layout_height="46dp"
+            android:layout_marginTop="5dp"
+            android:background="@drawable/rail_pill"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
 
             <TextView
-                android:layout_width="24dp"
-                android:layout_height="wrap_content"
+                android:layout_width="56dp"
+                android:layout_height="match_parent"
                 android:duplicateParentState="true"
                 android:gravity="center"
                 android:text="⌂"
                 android:textColor="@color/rail_icon_text"
-                android:textSize="19sp" />
+                android:textSize="23sp" />
 
             <TextView
                 android:id="@+id/railHomeLabel"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:duplicateParentState="true"
-                android:paddingStart="8dp"
-                android:paddingEnd="8dp"
+                android:paddingEnd="14dp"
+                android:singleLine="true"
                 android:text="Home"
                 android:textColor="@color/rail_icon_text"
-                android:textSize="13sp"
+                android:textSize="15sp"
                 android:textStyle="bold"
                 android:visibility="gone" />
         </LinearLayout>
 
         <LinearLayout
             android:id="@+id/railTurkish"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
+            android:layout_width="match_parent"
+            android:layout_height="46dp"
+            android:layout_marginTop="5dp"
             android:background="@drawable/rail_pill"
             android:clickable="true"
             android:focusable="true"
             android:gravity="center_vertical"
-            android:minWidth="40dp"
-            android:orientation="horizontal"
-            android:paddingTop="8dp"
-            android:paddingBottom="8dp">
+            android:orientation="horizontal">
 
             <TextView
-                android:layout_width="24dp"
-                android:layout_height="wrap_content"
+                android:layout_width="56dp"
+                android:layout_height="match_parent"
                 android:duplicateParentState="true"
                 android:gravity="center"
                 android:text="☾"
                 android:textColor="@color/rail_icon_text"
-                android:textSize="19sp" />
+                android:textSize="23sp" />
 
             <TextView
                 android:id="@+id/railTurkishLabel"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:duplicateParentState="true"
-                android:paddingStart="8dp"
-                android:paddingEnd="8dp"
+                android:paddingEnd="14dp"
+                android:singleLine="true"
                 android:text="Turkish"
                 android:textColor="@color/rail_icon_text"
-                android:textSize="13sp"
+                android:textSize="15sp"
                 android:textStyle="bold"
                 android:visibility="gone" />
         </LinearLayout>
 
         <LinearLayout
             android:id="@+id/railTv"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
+            android:layout_width="match_parent"
+            android:layout_height="46dp"
+            android:layout_marginTop="5dp"
             android:background="@drawable/rail_pill"
             android:clickable="true"
             android:focusable="true"
             android:gravity="center_vertical"
-            android:minWidth="40dp"
-            android:orientation="horizontal"
-            android:paddingTop="8dp"
-            android:paddingBottom="8dp">
+            android:orientation="horizontal">
 
             <TextView
-                android:layout_width="24dp"
-                android:layout_height="wrap_content"
+                android:layout_width="56dp"
+                android:layout_height="match_parent"
                 android:duplicateParentState="true"
                 android:gravity="center"
                 android:text="▣"
                 android:textColor="@color/rail_icon_text"
-                android:textSize="17sp" />
+                android:textSize="23sp" />
 
             <TextView
                 android:id="@+id/railTvLabel"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:duplicateParentState="true"
-                android:paddingStart="8dp"
-                android:paddingEnd="8dp"
+                android:paddingEnd="14dp"
+                android:singleLine="true"
                 android:text="TV"
                 android:textColor="@color/rail_icon_text"
-                android:textSize="13sp"
+                android:textSize="15sp"
                 android:textStyle="bold"
                 android:visibility="gone" />
         </LinearLayout>
 
         <LinearLayout
             android:id="@+id/railMovies"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
+            android:layout_width="match_parent"
+            android:layout_height="46dp"
+            android:layout_marginTop="5dp"
             android:background="@drawable/rail_pill"
             android:clickable="true"
             android:focusable="true"
             android:gravity="center_vertical"
-            android:minWidth="40dp"
-            android:orientation="horizontal"
-            android:paddingTop="8dp"
-            android:paddingBottom="8dp">
+            android:orientation="horizontal">
 
             <TextView
-                android:layout_width="24dp"
-                android:layout_height="wrap_content"
+                android:layout_width="56dp"
+                android:layout_height="match_parent"
                 android:duplicateParentState="true"
                 android:gravity="center"
                 android:text="▶"
                 android:textColor="@color/rail_icon_text"
-                android:textSize="15sp" />
+                android:textSize="23sp" />
 
             <TextView
                 android:id="@+id/railMoviesLabel"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:duplicateParentState="true"
-                android:paddingStart="8dp"
-                android:paddingEnd="8dp"
+                android:paddingEnd="14dp"
+                android:singleLine="true"
                 android:text="Movies"
                 android:textColor="@color/rail_icon_text"
-                android:textSize="13sp"
+                android:textSize="15sp"
                 android:textStyle="bold"
                 android:visibility="gone" />
         </LinearLayout>
 
         <LinearLayout
             android:id="@+id/railCollections"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
+            android:layout_width="match_parent"
+            android:layout_height="46dp"
+            android:layout_marginTop="5dp"
             android:background="@drawable/rail_pill"
             android:clickable="true"
             android:focusable="true"
             android:gravity="center_vertical"
-            android:minWidth="40dp"
-            android:orientation="horizontal"
-            android:paddingTop="8dp"
-            android:paddingBottom="8dp">
+            android:orientation="horizontal">
 
             <TextView
-                android:layout_width="24dp"
-                android:layout_height="wrap_content"
+                android:layout_width="56dp"
+                android:layout_height="match_parent"
                 android:duplicateParentState="true"
                 android:gravity="center"
                 android:text="◈"
                 android:textColor="@color/rail_icon_text"
-                android:textSize="17sp" />
+                android:textSize="23sp" />
 
             <TextView
                 android:id="@+id/railCollectionsLabel"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:duplicateParentState="true"
-                android:paddingStart="8dp"
-                android:paddingEnd="8dp"
+                android:paddingEnd="14dp"
+                android:singleLine="true"
                 android:text="Collections"
                 android:textColor="@color/rail_icon_text"
-                android:textSize="13sp"
+                android:textSize="15sp"
                 android:textStyle="bold"
                 android:visibility="gone" />
         </LinearLayout>
 
         <LinearLayout
             android:id="@+id/railSpin"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
+            android:layout_width="match_parent"
+            android:layout_height="46dp"
+            android:layout_marginTop="5dp"
             android:background="@drawable/rail_pill"
             android:clickable="true"
             android:focusable="true"
             android:gravity="center_vertical"
-            android:minWidth="40dp"
-            android:orientation="horizontal"
-            android:paddingTop="8dp"
-            android:paddingBottom="8dp">
+            android:orientation="horizontal">
 
             <TextView
-                android:layout_width="24dp"
-                android:layout_height="wrap_content"
+                android:layout_width="56dp"
+                android:layout_height="match_parent"
                 android:duplicateParentState="true"
                 android:gravity="center"
                 android:text="✸"
                 android:textColor="@color/rail_icon_text"
-                android:textSize="17sp" />
+                android:textSize="23sp" />
 
             <TextView
                 android:id="@+id/railSpinLabel"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:duplicateParentState="true"
-                android:paddingStart="8dp"
-                android:paddingEnd="8dp"
+                android:paddingEnd="14dp"
+                android:singleLine="true"
                 android:text="The Reel"
                 android:textColor="@color/rail_icon_text"
-                android:textSize="13sp"
+                android:textSize="15sp"
                 android:textStyle="bold"
                 android:visibility="gone" />
         </LinearLayout>
 
         <LinearLayout
             android:id="@+id/railSearch"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
+            android:layout_width="match_parent"
+            android:layout_height="46dp"
+            android:layout_marginTop="5dp"
             android:background="@drawable/rail_pill"
             android:clickable="true"
             android:focusable="true"
             android:gravity="center_vertical"
-            android:minWidth="40dp"
-            android:orientation="horizontal"
-            android:paddingTop="8dp"
-            android:paddingBottom="8dp">
+            android:orientation="horizontal">
 
             <TextView
-                android:layout_width="24dp"
-                android:layout_height="wrap_content"
+                android:layout_width="56dp"
+                android:layout_height="match_parent"
                 android:duplicateParentState="true"
                 android:gravity="center"
                 android:text="⌕"
                 android:textColor="@color/rail_icon_text"
-                android:textSize="20sp" />
+                android:textSize="23sp" />
 
             <TextView
                 android:id="@+id/railSearchLabel"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:duplicateParentState="true"
-                android:paddingStart="8dp"
-                android:paddingEnd="8dp"
+                android:paddingEnd="14dp"
+                android:singleLine="true"
                 android:text="Search"
                 android:textColor="@color/rail_icon_text"
-                android:textSize="13sp"
+                android:textSize="15sp"
                 android:textStyle="bold"
                 android:visibility="gone" />
         </LinearLayout>
 
         <LinearLayout
             android:id="@+id/railSettings"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
+            android:layout_width="match_parent"
+            android:layout_height="46dp"
+            android:layout_marginTop="5dp"
             android:background="@drawable/rail_pill"
             android:clickable="true"
             android:focusable="true"
             android:gravity="center_vertical"
-            android:minWidth="40dp"
-            android:orientation="horizontal"
-            android:paddingTop="8dp"
-            android:paddingBottom="8dp">
+            android:orientation="horizontal">
 
             <TextView
-                android:layout_width="24dp"
-                android:layout_height="wrap_content"
+                android:layout_width="56dp"
+                android:layout_height="match_parent"
                 android:duplicateParentState="true"
                 android:gravity="center"
                 android:text="⚙"
                 android:textColor="@color/rail_icon_text"
-                android:textSize="18sp" />
+                android:textSize="23sp" />
 
             <TextView
                 android:id="@+id/railSettingsLabel"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:duplicateParentState="true"
-                android:paddingStart="8dp"
-                android:paddingEnd="8dp"
+                android:paddingEnd="14dp"
+                android:singleLine="true"
                 android:text="Settings"
                 android:textColor="@color/rail_icon_text"
-                android:textSize="13sp"
+                android:textSize="15sp"
                 android:textStyle="bold"
                 android:visibility="gone" />
         </LinearLayout>
 
+        <!-- pushes nothing; keeps the column top-aligned if the TV is tall -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:focusable="false" />
     </LinearLayout>
 
     <!-- Cinematic splash: full-bleed artwork (carries the WAHAB TV title),
@@ -520,4 +564,5 @@
                 android:shadowRadius="8" />
         </LinearLayout>
     </FrameLayout>
+
 </FrameLayout>

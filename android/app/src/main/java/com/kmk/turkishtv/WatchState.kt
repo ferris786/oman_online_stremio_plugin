@@ -30,7 +30,7 @@ object WatchState {
         val minutesLeft: Long get() = if (durationMs > positionMs) (durationMs - positionMs) / 60000 else 0
     }
 
-    private fun prefs(ctx: Context) = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+    private fun prefs(ctx: Context) = Profiles.watchPrefs(ctx)
 
     fun savePosition(ctx: Context, videoId: String, positionMs: Long) {
         prefs(ctx).edit().putLong("pos_$videoId", positionMs).apply()

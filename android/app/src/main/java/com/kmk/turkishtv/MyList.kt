@@ -20,7 +20,7 @@ object MyList {
         val description: String? = null, val addedAt: Long = System.currentTimeMillis()
     )
 
-    private fun prefs(ctx: Context) = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+    private fun prefs(ctx: Context) = Profiles.userPrefs(ctx)
 
     fun all(ctx: Context): List<Entry> {
         val raw = prefs(ctx).getString(KEY, null) ?: return emptyList()

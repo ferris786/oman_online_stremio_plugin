@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The sidebar's own surface. At rest it is a narrow column of glyphs, so
+     it needs enough ground of its own to read as a sidebar rather than
+     icons floating over the artwork; when it expands over the rows the
+     left edge is opaque so the labels stay legible. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <gradient
+        android:angle="0"
+        android:startColor="#f20a0a0d"
+        android:centerColor="#d60c0c11"
+        android:endColor="#000e0e12"
+        android:centerX="0.62"
+        android:type="linear" />
+</shape>

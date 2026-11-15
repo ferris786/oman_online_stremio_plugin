@@ -87,6 +87,8 @@ class PlayerActivity : Activity() {
     // diagnostics state
     private var decoderName = "-"
     private var stalls = 0
+    private var droppedFrames = 0
+    private var lastHeartbeatAt = 0L
     private var diagVisible = false
 
     // external subtitles (English movies): fetched in the background, and
@@ -296,8 +298,28 @@ class PlayerActivity : Activity() {
                         this@PlayerActivity.decoderName = decoderName
                     }
                 })
+                p.addAnalyticsListener(object : AnalyticsListener {
+                    override fun onDroppedVideoFrames(
+                        eventTime: AnalyticsListener.EventTime, count: Int, elapsedMs: Long
+                    ) {
+                        droppedFrames += count
+                    }
+                    override fun onAudioUnderrun(
+                        eventTime: AnalyticsListener.EventTime, bufferSize: Int,
+                        bufferSizeMs: Long, elapsedSinceLastFeedMs: Long
+                    ) {
+                        Diag.warn("play", "audio underrun", mapOf(
+                            "posS" to player.currentPosition / 1000,
+                            "sinceFeedMs" to elapsedSinceLastFeedMs))
+                    }
+                })
                 p.addListener(object : Player.Listener {
                     override fun onPlaybackStateChanged(state: Int) {
+                        Diag.log("play", "state=" + stateName(state), mapOf(
+                            "posS" to player.currentPosition / 1000,
+                            "durS" to player.duration / 1000,
+                            "bufAheadS" to player.totalBufferedDuration / 1000,
+                            "stalls" to stalls))
                         if (state == Player.STATE_READY) playbackStarted = true
                         if (state == Player.STATE_BUFFERING) {
                             if (playbackStarted) stalls++
@@ -313,9 +335,19 @@ class PlayerActivity : Activity() {
                             // is what closed the player and dropped the viewer
                             // back on the home screen partway through.
                             if (dur > 0 && pos < dur * 92 / 100) {
+                                Diag.error("play", "ENDED EARLY", mapOf(
+                                    "posS" to pos / 1000, "durS" to dur / 1000,
+                                    "pct" to (if (dur > 0) pos * 100 / dur else 0),
+                                    "source" to currentSourceName(),
+                                    "host" to Diag.host(streams.getOrNull(streamIndex)?.url),
+                                    "stalls" to stalls, "dropped" to droppedFrames,
+                                    "decoder" to decoderName) + Diag.memory())
+                                Diag.flushSoon()
                                 noteStop("ended early at ${pos / 1000}s of ${dur / 1000}s")
                                 handleEarlyEnd()
                             } else {
+                                Diag.log("play", "finished", mapOf(
+                                    "posS" to pos / 1000, "durS" to dur / 1000))
                                 ended = true
                                 onEnded()
                             }
@@ -323,6 +355,17 @@ class PlayerActivity : Activity() {
                     }
 
                     override fun onPlayerError(error: PlaybackException) {
+                        Diag.error("play", "error ${error.errorCodeName}", mapOf(
+                            "message" to error.message,
+                            "cause" to (error.cause?.javaClass?.simpleName ?: "-"),
+                            "causeMsg" to (error.cause?.message ?: "-"),
+                            "posS" to player.currentPosition / 1000,
+                            "durS" to player.duration / 1000,
+                            "started" to playbackStarted,
+                            "source" to currentSourceName(),
+                            "host" to Diag.host(streams.getOrNull(streamIndex)?.url),
+                            "decoder" to decoderName) + Diag.memory())
+                        Diag.flushSoon()
                         // While nothing has played yet, hop to the next source
                         if (!playbackStarted) {
                             tryNextSource("Source failed (${error.errorCodeName})")
@@ -333,6 +376,38 @@ class PlayerActivity : Activity() {
                     }
                 })
             }
+    }
+
+    private fun stateName(state: Int): String = when (state) {
+        Player.STATE_IDLE -> "idle"
+        Player.STATE_BUFFERING -> "buffering"
+        Player.STATE_READY -> "ready"
+        Player.STATE_ENDED -> "ended"
+        else -> "?$state"
+    }
+
+    private fun currentSourceName(): String = streams.getOrNull(streamIndex)?.name ?: "-"
+
+    /**
+     * Every thirty seconds while something is playing. This is the line that
+     * settles the stopping question: if the heap climbs run after run and
+     * the log simply stops, Android killed us; if the figures are flat and
+     * the last entry is an error or an early end, the stream died.
+     */
+    private fun heartbeat() {
+        val now = System.currentTimeMillis()
+        if (now - lastHeartbeatAt < 30_000) return
+        lastHeartbeatAt = now
+        if (!playbackStarted) return
+        Diag.log("beat", "playing", mapOf(
+            "posS" to player.currentPosition / 1000,
+            "durS" to player.duration / 1000,
+            "bufAheadS" to player.totalBufferedDuration / 1000,
+            "playing" to player.isPlaying,
+            "stalls" to stalls,
+            "dropped" to droppedFrames,
+            "decoder" to decoderName,
+            "source" to currentSourceName()) + Diag.memory())
     }
 
     private fun isYouTube(url: String): Boolean =
@@ -373,6 +448,13 @@ class PlayerActivity : Activity() {
             if (s.cached) resolveLazy(s, -1L) else resolveUncached(s)
             return
         }
+        Diag.log("play", "starting", mapOf(
+            "video" to videoId,
+            "source" to s.name,
+            "host" to Diag.host(s.url),
+            "encode" to s.encode,
+            "attempt" to (failedSources.size + 1),
+            "skin" to skin.key) + Diag.memory())
         player.setMediaItem(mediaItemFor(s.url))
         player.prepare()
         val pos = if (resumeMs >= 0) resumeMs else resumePosition()
@@ -403,6 +485,9 @@ class PlayerActivity : Activity() {
                 Toast.LENGTH_LONG).show()
             return
         }
+        Diag.warn("play", "falling back", mapOf(
+            "reason" to reason, "from" to currentSourceName(),
+            "failed" to failedSources.size, "posS" to player.currentPosition / 1000))
         Toast.makeText(this, "$reason - trying next source…", Toast.LENGTH_SHORT).show()
 
         // Codec-aware fallback: prefer the next UNTRIED source with a
@@ -797,6 +882,7 @@ class PlayerActivity : Activity() {
         override fun run() {
             updateBuffering()
             updateDiagnostics()
+            heartbeat()
             val dur = player.duration
             val pos = player.currentPosition
             if (dur > 0) {
@@ -1168,6 +1254,15 @@ class PlayerActivity : Activity() {
     }
 
     override fun onStop() {
+        // A stop that nobody asked for is the signature of the system taking
+        // the activity away, so the reason it was leaving is recorded here.
+        Diag.log("life", "onStop", mapOf(
+            "posS" to player.currentPosition / 1000,
+            "durS" to player.duration / 1000,
+            "ended" to ended,
+            "finishing" to isFinishing,
+            "playing" to player.isPlaying) + Diag.memory())
+        Diag.flushSoon()
         if (!ended && player.currentPosition > 0) {
             WatchState.savePosition(this, videoId, player.currentPosition)
             WatchState.updateHistoryPosition(this, videoId, player.currentPosition, player.duration)
@@ -1181,6 +1276,9 @@ class PlayerActivity : Activity() {
     }
 
     override fun onDestroy() {
+        Diag.log("life", "onDestroy", mapOf(
+            "posS" to player.currentPosition / 1000, "finishing" to isFinishing))
+        Diag.flushSoon()
         player.release()
         super.onDestroy()
     }
