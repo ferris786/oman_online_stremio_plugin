@@ -264,6 +264,26 @@
                 android:textStyle="bold"
                 android:ellipsize="end"
                 android:maxWidth="230dp" />
+
+            <!-- only shown once this TV is linked to another one -->
+            <TextView
+                android:id="@+id/mSend"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/btn_primary"
+                android:focusable="true"
+                android:clickable="true"
+                android:paddingStart="16dp" android:paddingEnd="16dp"
+                android:paddingTop="9dp" android:paddingBottom="9dp"
+                android:singleLine="true"
+                android:ellipsize="end"
+                android:maxWidth="200dp"
+                android:text="➤  Send"
+                android:textColor="@color/btn_primary_text"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:visibility="gone" />
         </LinearLayout>
 
         <TextView

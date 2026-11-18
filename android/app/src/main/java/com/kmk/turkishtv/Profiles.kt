@@ -36,8 +36,28 @@ object Profiles {
         0xFF9B5D4A.toInt(),   // terracotta
         0xFF5E7C9B.toInt(),   // slate blue
         0xFF8E6B9B.toInt(),   // plum
-        0xFFB5844E.toInt()    // brass
+        0xFFB5844E.toInt(),   // brass
+        0xFF4F8A80.toInt(),   // teal
+        0xFFA8574F.toInt()    // rust
     )
+
+    /**
+     * The people who actually use this app.
+     *
+     * There is no sign-in and typing a name on a remote is miserable, so
+     * naming a profile is a choice from this list. Order matters: a name's
+     * position fixes its colour, so the same person is the same colour on
+     * every TV in the household, which is what makes the "watching now" and
+     * "sent by" rows readable at a glance.
+     */
+    val KNOWN = listOf("Wahab", "Farhana", "Baboo", "Khalid", "Zeenat", "Laila", "Aaria", "Wasim")
+
+    fun colourFor(name: String): Int {
+        val i = KNOWN.indexOfFirst { it.equals(name.trim(), ignoreCase = true) }
+        if (i >= 0) return COLOURS[i % COLOURS.size]
+        // someone typed their own name; keep it stable for that spelling
+        return COLOURS[Math.abs(name.trim().lowercase().hashCode()) % COLOURS.size]
+    }
 
     data class Profile(val id: String, val name: String, val colour: Int) {
         val initial: String get() = name.trim().take(1).uppercase().ifEmpty { "?" }
@@ -93,10 +113,11 @@ object Profiles {
 
     fun add(ctx: Context, name: String): Profile {
         val list = all(ctx).toMutableList()
+        val clean = name.trim().ifEmpty { "Viewer" }
         val p = Profile(
             id = "p" + System.currentTimeMillis().toString(36),
-            name = name.trim().ifEmpty { "Viewer" },
-            colour = COLOURS[list.size % COLOURS.size]
+            name = clean,
+            colour = colourFor(clean)
         )
         list.add(p)
         save(ctx, list)
@@ -104,7 +125,12 @@ object Profiles {
     }
 
     fun rename(ctx: Context, id: String, name: String) {
-        save(ctx, all(ctx).map { if (it.id == id) it.copy(name = name.trim().ifEmpty { it.name }) else it })
+        save(ctx, all(ctx).map {
+            if (it.id != id) it else {
+                val clean = name.trim().ifEmpty { it.name }
+                it.copy(name = clean, colour = colourFor(clean))
+            }
+        })
     }
 
     fun recolour(ctx: Context, id: String) {
@@ -129,6 +155,16 @@ object Profiles {
     }
 
     fun multiple(ctx: Context): Boolean = all(ctx).size > 1
+
+    /** has anyone actually said who they are on this TV yet? */
+    fun named(ctx: Context): Boolean = device(ctx).getBoolean("profile_named", false)
+
+    /** Answer the one-time question: name the profile in use and move on. */
+    fun nameThisTv(ctx: Context, name: String) {
+        // rename already derives the colour from the name
+        rename(ctx, activeId(ctx), name)
+        device(ctx).edit().putBoolean("profile_named", true).apply()
+    }
 
     // ------------------------------------------------------- personal storage
 

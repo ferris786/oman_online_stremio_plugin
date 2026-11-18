@@ -84,6 +84,20 @@ class PlayerActivity : Activity() {
     private var lastSeekAt = 0L
     private var seekStartedAt = 0L
 
+    // Watching together. The room's position and pause state are authority
+    // while this is on; a local pause or seek is DETECTED by comparing state
+    // between ticks rather than by hooking every input path, which is what
+    // makes it work with the remote, the controller and all three skins
+    // without touching a single layout.
+    private var togetherMode = false
+    private var togetherWith = ""
+    private var holdForOther = false          // paused because they are buffering
+    private var controlPending = false        // a local act to report next tick
+    private var lastTickPos = -1L
+    private var lastTickAt = 0L
+    private var lastTickPlaying = false
+    private var offeredRoomFor = ""           // so the invite is offered once
+
     // diagnostics state
     private var decoderName = "-"
     private var stalls = 0
@@ -159,6 +173,17 @@ class PlayerActivity : Activity() {
 
         // Pre-resolved streams (English movies resolved through TorBox) are
         // passed directly instead of hitting the addon /stream endpoint.
+        // arrived from "Join" on the home screen
+        if (intent.getBooleanExtra("together", false)) {
+            val at = intent.getLongExtra("togetherPositionMs", -1L)
+            playerView.postDelayed({
+                if (!isFinishing) {
+                    if (at > 0) player.seekTo(at)
+                    startTogether(announce = true)
+                }
+            }, 2_500)
+        }
+
         val preResolved = intent.getStringExtra("streamsJson")
         if (preResolved != null) {
             val arr = org.json.JSONArray(preResolved)
@@ -408,6 +433,196 @@ class PlayerActivity : Activity() {
             "dropped" to droppedFrames,
             "decoder" to decoderName,
             "source" to currentSourceName()) + Diag.memory())
+    }
+
+    // ------------------------------------------------------ watching together
+
+    private fun houseKind(): String = when {
+        videoId.startsWith(EnSeriesActivity.PREFIX) -> "enseries"
+        videoId.startsWith("movie:") -> "movie"
+        else -> "series"
+    }
+
+    /** presence: what this box is playing, for the other TV's home screen */
+    private val presenceBeat = object : Runnable {
+        override fun run() {
+            if (Household.linked(this@PlayerActivity)) {
+                val pos = (player.currentPosition / 1000).toInt()
+                val dur = (player.duration / 1000).coerceAtLeast(0).toInt()
+                val playing = player.isPlaying
+                Thread {
+                    Household.beat(this@PlayerActivity, houseKind(), videoId, seriesId,
+                        videoTitle, intent.getStringExtra("seriesPoster"),
+                        intent.getStringExtra("seriesBackdrop"), pos, dur, playing)
+                }.start()
+            }
+            playerView.postDelayed(this, 10_000)
+        }
+    }
+
+    /**
+     * Not in a room yet: has the other person opened one on what I am
+     * watching? If so, offer to fall in step rather than silently yanking
+     * the picture around.
+     */
+    private val roomWatch = object : Runnable {
+        override fun run() {
+            if (!togetherMode && Household.linked(this@PlayerActivity) && playbackStarted) {
+                Thread {
+                    val room = Household.roomGet(this@PlayerActivity)
+                    runOnUiThread {
+                        if (isFinishing || togetherMode) return@runOnUiThread
+                        if (room == null || room.videoId != videoId) return@runOnUiThread
+                        if (room.host == Household.deviceId(this@PlayerActivity)) return@runOnUiThread
+                        if (offeredRoomFor == room.videoId + room.host) return@runOnUiThread
+                        offeredRoomFor = room.videoId + room.host
+                        Toast.makeText(this@PlayerActivity,
+                            "${room.hostName} is watching this too. Press OK to watch in step.",
+                            Toast.LENGTH_LONG).show()
+                        pendingRoomInvite = room.hostName
+                        // an unanswered invite must not keep hold of OK
+                        playerView.postDelayed({ pendingRoomInvite = null }, 20_000)
+                    }
+                }.start()
+            }
+            playerView.postDelayed(this, 10_000)
+        }
+    }
+    private var pendingRoomInvite: String? = null
+
+    /** Open a room on what is playing, or fall into the one already there. */
+    private fun startTogether(announce: Boolean) {
+        if (!Household.linked(this)) {
+            Toast.makeText(this, "Link this TV to the other one in Settings first", Toast.LENGTH_LONG).show()
+            return
+        }
+        val s = streams.getOrNull(streamIndex)
+        val pos = player.currentPosition
+        Thread {
+            val existing = Household.roomGet(this)
+            val room = if (existing != null && existing.videoId == videoId) existing
+            else Household.roomOpen(this, houseKind(), videoId, seriesId, videoTitle,
+                intent.getStringExtra("seriesPoster"), intent.getStringExtra("seriesBackdrop"),
+                pos, s?.name ?: "", s?.hash ?: "", s?.fileIdx ?: -1, s?.epTag ?: "", s?.dn ?: "")
+            runOnUiThread {
+                if (isFinishing) return@runOnUiThread
+                if (room == null) {
+                    Toast.makeText(this, "Could not start watching together", Toast.LENGTH_LONG).show()
+                    return@runOnUiThread
+                }
+                togetherWith = room.hostName
+                enterTogether(announce)
+            }
+        }.start()
+    }
+
+    private fun enterTogether(announce: Boolean) {
+        if (togetherMode) return
+        togetherMode = true
+        pendingRoomInvite = null
+        noteTick()
+        playerView.removeCallbacks(roomTick)
+        playerView.post(roomTick)
+        if (announce) {
+            Toast.makeText(this, "Watching with ${togetherWith.ifEmpty { "them" }}", Toast.LENGTH_LONG).show()
+        }
+        Diag.log("together", "joined", mapOf("with" to togetherWith, "video" to videoId))
+    }
+
+    private fun leaveTogether(closeRoom: Boolean) {
+        if (!togetherMode) return
+        togetherMode = false
+        holdForOther = false
+        playerView.removeCallbacks(roomTick)
+        showBuffering(false)
+        if (closeRoom) Thread { Household.roomClose(this) }.start()
+        Toast.makeText(this, "Watching on your own again", Toast.LENGTH_SHORT).show()
+        Diag.log("together", "left", mapOf("video" to videoId))
+    }
+
+    /** remember where we were, so the next tick can tell a local act apart */
+    private fun noteTick() {
+        lastTickPos = player.currentPosition
+        lastTickAt = System.currentTimeMillis()
+        lastTickPlaying = player.isPlaying
+    }
+
+    /**
+     * Two seconds is plenty for a television, and it keeps the client simple
+     * enough to reason about. One call publishes our state and returns the
+     * room's.
+     */
+    private val roomTick = object : Runnable {
+        override fun run() {
+            if (!togetherMode) return
+            val pos = player.currentPosition
+            val playing = player.isPlaying
+            val now = System.currentTimeMillis()
+            val stalled = player.playbackState == Player.STATE_BUFFERING
+
+            // Did the person in THIS room just do something? A pause or
+            // resume we did not apply ourselves, or a jump the clock cannot
+            // explain, is a deliberate act and owns the room.
+            var control = controlPending
+            if (lastTickPos >= 0 && !holdForOther) {
+                val elapsed = if (lastTickPlaying) now - lastTickAt else 0L
+                val expected = lastTickPos + elapsed
+                if (Math.abs(pos - expected) > 4_000) control = true
+                if (playing != lastTickPlaying) control = true
+            }
+            controlPending = false
+            noteTick()
+
+            Thread {
+                val room = Household.roomSync(this@PlayerActivity, pos, !playing, stalled, control)
+                runOnUiThread { if (!isFinishing && togetherMode) applyRoom(room) }
+            }.start()
+            playerView.postDelayed(this, 2_000)
+        }
+    }
+
+    /**
+     * The rule that decides whether this feels good: if ANYONE is stalled,
+     * everyone waits. Hiding one person's buffering is what makes every
+     * other watch-together feature drift apart.
+     */
+    private fun applyRoom(room: Household.Room?) {
+        if (room == null) {
+            // the room is gone, so stop pretending we are in one
+            leaveTogether(closeRoom = false)
+            return
+        }
+        togetherWith = room.hostName
+
+        if (room.waiting) {
+            if (player.isPlaying) {
+                holdForOther = true
+                player.pause()
+            }
+            val who = room.stalledBy.filter { it != Profiles.activeName(this) }
+            bufferText.text = if (who.isEmpty()) skinCase("Waiting…")
+                else skinCase("Waiting for ${who.joinToString(" and ")}…")
+            bufferPanel.visibility = View.VISIBLE
+            noteTick()
+            return
+        }
+
+        if (holdForOther) {
+            holdForOther = false
+            showBuffering(false)
+            if (!room.paused) player.play()
+            noteTick()
+        }
+
+        if (room.paused && player.isPlaying) { player.pause(); noteTick() }
+        else if (!room.paused && !player.isPlaying && playbackStarted) { player.play(); noteTick() }
+
+        // drift correction, never while anyone is still catching up
+        val drift = Math.abs(player.currentPosition - room.positionMs)
+        if (drift > 2_500) {
+            player.seekTo(room.positionMs)
+            noteTick()
+        }
     }
 
     private fun isYouTube(url: String): Boolean =
@@ -1224,7 +1439,27 @@ class PlayerActivity : Activity() {
                 KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> { playNext(); return true }
             }
         }
+        // An invite owns OK for its short window, the same way the
+        // next-episode card does, so accepting is the obvious press.
+        if (pendingRoomInvite != null && !togetherMode) {
+            when (keyCode) {
+                KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
+                    startTogether(announce = true); return true
+                }
+                KeyEvent.KEYCODE_BACK -> {
+                    pendingRoomInvite = null
+                    Toast.makeText(this, "Carrying on separately", Toast.LENGTH_SHORT).show()
+                    return true
+                }
+            }
+        }
         return when (keyCode) {
+            // a coloured button where the remote has one, for turning
+            // together mode on or off without waiting to be invited
+            KeyEvent.KEYCODE_PROG_YELLOW, KeyEvent.KEYCODE_BOOKMARK -> {
+                if (togetherMode) leaveTogether(closeRoom = true) else startTogether(announce = true)
+                true
+            }
             KeyEvent.KEYCODE_CHANNEL_UP -> { cycleSource(1); true }
             KeyEvent.KEYCODE_CHANNEL_DOWN -> { cycleSource(-1); true }
             KeyEvent.KEYCODE_MENU -> { showSourceBrowser(); true }
@@ -1251,6 +1486,10 @@ class PlayerActivity : Activity() {
         super.onStart()
         playerView.postDelayed(saveRunnable, 10_000)
         playerView.postDelayed(tick, 1000)
+        if (Household.linked(this)) {
+            playerView.postDelayed(presenceBeat, 4_000)
+            playerView.postDelayed(roomWatch, 12_000)
+        }
     }
 
     override fun onStop() {
@@ -1271,6 +1510,12 @@ class PlayerActivity : Activity() {
         playerView.removeCallbacks(tick)
         playerView.removeCallbacks(commitSeek)
         playerView.removeCallbacks(showBufferPanel)
+        playerView.removeCallbacks(presenceBeat)
+        playerView.removeCallbacks(roomWatch)
+        playerView.removeCallbacks(roomTick)
+        // stop claiming to be watching the moment we are not
+        if (Household.linked(this)) Thread { Household.beatStopped(this) }.start()
+        if (togetherMode) Thread { Household.roomClose(this) }.start()
         player.pause()
         super.onStop()
     }

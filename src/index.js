@@ -825,6 +825,68 @@ const addonRouter = getRouter(addonInterface);
 app.use("/", addonRouter);
 
 const PORT = process.env.PORT || 7000;
+
+// ---------------------------------------------------------------------------
+// Households: two installs that know about each other. One link carries an
+// inbox (send a title to the other person), presence (what they are
+// watching now) and a room (watching the same thing in step).
+// Device identity is the id the app already generates for diagnostics.
+// ---------------------------------------------------------------------------
+const house = require("./household");
+
+function hid(req) { return String(req.params.houseId || ""); }
+function dev(req) {
+    return String((req.body && req.body.deviceId) || req.query.deviceId || "");
+}
+function answer(res, result) {
+    if (result && result.error) return res.status(400).json(result);
+    res.json(result);
+}
+
+// --- the link
+app.post("/house/start", (req, res) => {
+    try {
+        answer(res, house.start(dev(req), req.body && req.body.name));
+    } catch (e) {
+        res.status(400).json({ error: e.message });
+    }
+});
+
+app.post("/house/join", (req, res) => {
+    answer(res, house.join(req.body && req.body.code, dev(req), req.body && req.body.name));
+});
+
+app.get("/house/:houseId", (req, res) => answer(res, house.info(hid(req), dev(req))));
+app.post("/house/:houseId/leave", (req, res) => answer(res, house.leave(hid(req), dev(req))));
+
+// --- the inbox: works whether or not the other person is awake
+app.post("/house/:houseId/send", (req, res) => {
+    answer(res, house.send(hid(req), dev(req), req.body && req.body.item));
+});
+app.get("/house/:houseId/inbox", (req, res) => answer(res, house.inbox(hid(req), dev(req))));
+app.post("/house/:houseId/inbox/dismiss", (req, res) => {
+    answer(res, house.dismiss(hid(req), dev(req), req.body && req.body.sentId));
+});
+
+// --- presence
+app.post("/house/:houseId/presence", (req, res) => {
+    answer(res, house.beat(hid(req), dev(req), req.body));
+});
+app.get("/house/:houseId/watching", (req, res) => answer(res, house.watching(hid(req), dev(req))));
+
+// --- the room
+app.post("/house/:houseId/room/open", (req, res) => {
+    answer(res, house.roomOpen(hid(req), dev(req), req.body));
+});
+// publishes this device's state and returns the room's, in one call
+app.post("/house/:houseId/room/sync", (req, res) => {
+    answer(res, house.roomSync(hid(req), dev(req), req.body));
+});
+app.get("/house/:houseId/room", (req, res) => answer(res, house.roomGet(hid(req))));
+app.post("/house/:houseId/room/close", (req, res) => {
+    answer(res, house.roomClose(hid(req), dev(req)));
+});
+
 /**
  * Last resort. A malformed or oversized body otherwise gets Express's
  * default HTML error page, which prints a stack trace with server paths in

@@ -348,6 +348,8 @@ class EnSeriesActivity : Activity() {
             putExtra("seriesBackdrop", m?.background)
             putExtra("season", e.season)
             putExtra("episode", e.episode)
+            // carried through when the home screen sent us here to join someone
+            putExtra("together", intent.getBooleanExtra("together", false))
         })
     }
 

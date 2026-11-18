@@ -81,6 +81,30 @@ class MovieDetailActivity : Activity() {
             trailerId?.let { Extras.playTrailer(this, it, movie?.name ?: "") }
         }
 
+        // Send this film to the other TV in the household. It waits in their
+        // inbox, so it works whether or not they are watching right now.
+        val sendBtn = findViewById<TextView>(R.id.mSend)
+        if (Household.linked(this)) {
+            val who = Household.otherName(this)
+            sendBtn.text = if (who == "them") "➤  Send" else "➤  Send to $who"
+            sendBtn.visibility = View.VISIBLE
+            sendBtn.setOnClickListener {
+                val m = movie ?: return@setOnClickListener
+                status.text = "Sending…"
+                Thread {
+                    val err = Household.send(this, "movie", imdbId, m.name, m.poster, background,
+                        meta?.optString("year") ?: m.year)
+                    runOnUiThread {
+                        if (isFinishing) return@runOnUiThread
+                        status.text = ""
+                        Toast.makeText(this,
+                            err ?: "Sent to ${Household.otherName(this)}",
+                            Toast.LENGTH_LONG).show()
+                    }
+                }.start()
+            }
+        }
+
         // TMDB's recommendations for this film, in the same grid the Reel
         // and the franchises use
         findViewById<TextView>(R.id.mSimilar).setOnClickListener {
@@ -306,6 +330,10 @@ class MovieDetailActivity : Activity() {
             putExtra("videoTitle", movie?.name)
             putExtra("streamsJson", arr.toString())
             putExtra("startIndex", startIndex)
+            putExtra("poster", movie?.poster)
+            putExtra("background", background)
+            // carried through when the home screen sent us here to join someone
+            putExtra("together", intent.getBooleanExtra("together", false))
         })
     }
 }

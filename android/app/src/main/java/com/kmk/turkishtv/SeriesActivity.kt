@@ -61,6 +61,8 @@ class SeriesActivity : Activity() {
     /** which profile the rows on screen belong to, so a switch rebuilds them */
     private var shownProfile: String? = null
 
+    private var watchingRow: Row? = null
+    private var sentRow: Row? = null
     private var myListRow: Row? = null
     private var continueRow: Row? = null
     private var becauseRow: Row? = null
@@ -125,8 +127,14 @@ class SeriesActivity : Activity() {
         shownProfile = Profiles.activeId(this)
         Diag.log("home", "opened", mapOf("profile" to Profiles.activeName(this)))
 
-        // More than one person uses the box: ask who, once per launch.
-        if (Profiles.multiple(this) && !ProfilesActivity.askedThisLaunch) {
+        // There is no sign-in, so the app asks once who is watching on this
+        // TV. The answer is what the other TV in the household sees on its
+        // "watching now" and "sent by" rows, so it is worth asking properly
+        // rather than defaulting to a name nobody chose.
+        if (!Profiles.named(this)) {
+            startActivity(Intent(this, ProfilesActivity::class.java).putExtra("setup", true))
+        } else if (Profiles.multiple(this) && !ProfilesActivity.askedThisLaunch) {
+            // More than one person uses the box: ask which, once per launch.
             ProfilesActivity.askedThisLaunch = true
             startActivity(Intent(this, ProfilesActivity::class.java))
         }
@@ -233,18 +241,24 @@ class SeriesActivity : Activity() {
         keptRows.clear()
         lastFocusedRow = null
         lastSnapY = Int.MIN_VALUE
+        watchingRow = null; sentRow = null
         myListRow = null; continueRow = null; becauseRow = null; newRow = null; seriesRow = null
         becauseFor = null
         snapTo(0)
 
         when (section) {
             Section.HOME -> {
+                // the household rows go first: one is time-sensitive, the
+                // other is somebody asking you to watch something
+                watchingRow = addRow("Watching now")
+                sentRow = addRow("Sent to you")
                 myListRow = addRow("My List")
                 continueRow = addRow("Continue Watching")
                 becauseRow = addRow("Because you watched")
                 newRow = addRow("New this week")
                 keptHost = rowsContainer.childCount
                 fillMyListRow(); fillContinueRow(); fillBecauseRow(); fillNewRow()
+                fillHouseRows()
                 // a taster from each library, so Home is still a place to browse
                 seriesRow = addRow("Turkish Series")
                 seriesRow?.let {
@@ -487,20 +501,23 @@ class SeriesActivity : Activity() {
         // Came back from the picker as somebody else: the rows on screen are
         // the previous viewer's, so paint the chip and rebuild from scratch.
         val now = Profiles.activeId(this)
+        // Repaint unconditionally: the one-time setup changes the NAME
+        // without changing the profile id, so comparing ids alone would
+        // leave a stale label on the rail.
+        paintProfile()
         if (shownProfile != null && shownProfile != now) {
             shownProfile = now
-            paintProfile()
             section = Section.HOME
             paintRail()
             buildSection()
             return
         }
-        paintProfile()
         if (catalog.isNotEmpty() && section == Section.HOME) {
             refreshKeptRows()
             fillMyListRow()
             fillContinueRow()
             fillBecauseRow()
+            fillHouseRows()
             // progress may have changed while watching
             (spot as? Spot.C)?.let { c ->
                 WatchState.history(this).firstOrNull { it.videoId == c.h.videoId }?.let { show(Spot.C(it)) }
@@ -653,6 +670,40 @@ class SeriesActivity : Activity() {
         val entries = MyList.all(this)
         row.list.adapter = MyListAdapter(entries)
         row.view.visibility = if (entries.isEmpty()) View.GONE else View.VISIBLE
+    }
+
+    /**
+     * The two household rows.
+     *
+     * Both are network-backed and both are allowed to come back empty, so
+     * they stay hidden until there is something real to show rather than
+     * leaving two blank headers on the home screen.
+     */
+    private fun fillHouseRows() {
+        val wRow = watchingRow
+        val sRow = sentRow
+        if (!Household.linked(this)) {
+            wRow?.view?.visibility = View.GONE
+            sRow?.view?.visibility = View.GONE
+            return
+        }
+        Thread {
+            val watchers = Household.watching(this)
+            val sent = Household.inbox(this)
+            runOnUiThread {
+                if (isFinishing || watchingRow !== wRow || sentRow !== sRow) return@runOnUiThread
+                wRow?.let {
+                    it.list.adapter = WatchingAdapter(watchers)
+                    it.view.visibility = if (watchers.isEmpty()) View.GONE else View.VISIBLE
+                }
+                sRow?.let {
+                    val who = sent.map { x -> x.from }.distinct()
+                    it.header.text = if (who.size == 1) "Sent by ${who[0]}" else "Sent to you"
+                    it.list.adapter = SentAdapter(sent)
+                    it.view.visibility = if (sent.isEmpty()) View.GONE else View.VISIBLE
+                }
+            }
+        }.start()
     }
 
     /** "Because you watched X": recommendations from the last film finished */
@@ -1053,6 +1104,131 @@ class SeriesActivity : Activity() {
     }
 
     /** My List mixes Turkish series, English movies and English series */
+    /** What the other person is playing right now, and a way to fall in step. */
+    private inner class WatchingAdapter(private val items: List<Household.Watcher>) :
+        RecyclerView.Adapter<WatchingAdapter.VH>() {
+        inner class VH(v: View) : RecyclerView.ViewHolder(v) {
+            val still: ImageView = v.findViewById(R.id.still)
+            val label: TextView = v.findViewById(R.id.label)
+            val sub: TextView = v.findViewById(R.id.sub)
+            val progress: ProgressBar = v.findViewById(R.id.progress)
+        }
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) =
+            VH(layoutInflater.inflate(R.layout.item_still, parent, false))
+        override fun getItemCount() = items.size
+        override fun onBindViewHolder(holder: VH, position: Int) {
+            val w = items[position]
+            val series = seriesById[w.seriesId ?: ""]
+            Ui.loadImage(holder.still, w.background ?: series?.background ?: w.poster, 4f)
+            holder.label.text = w.title.ifBlank { "Watching" }
+            val mins = w.posS / 60
+            holder.sub.text = "${w.name}  ·  " +
+                (if (w.playing) "${mins} min in" else "paused at ${mins} min") +
+                "  ·  OK to join"
+            holder.progress.progress = if (w.durS > 0) (w.posS * 100 / w.durS) else 0
+            holder.progress.visibility = if (w.durS > 0) View.VISIBLE else View.INVISIBLE
+            Ui.focusLift(holder.itemView)
+            holder.itemView.setOnClickListener { joinWatcher(w) }
+        }
+    }
+
+    /**
+     * Titles the other person sent over. Opening one is the point; a long
+     * press takes it off the row, the same gesture Continue Watching uses.
+     */
+    private inner class SentAdapter(private val items: List<Household.Sent>) :
+        RecyclerView.Adapter<SentAdapter.VH>() {
+        inner class VH(v: View) : RecyclerView.ViewHolder(v) {
+            val poster: ImageView = v.findViewById(R.id.poster)
+            val chip: TextView = v.findViewById(R.id.chip)
+            val name: TextView = v.findViewById(R.id.name)
+        }
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) =
+            VH(layoutInflater.inflate(R.layout.item_poster, parent, false))
+        override fun getItemCount() = items.size
+        override fun onBindViewHolder(holder: VH, position: Int) {
+            val e = items[position]
+            Ui.loadImage(holder.poster, e.poster, 4f, R.drawable.placeholder_poster)
+            holder.chip.text = e.from.take(10).uppercase()
+            holder.chip.setBackgroundResource(R.drawable.chip_gold)
+            holder.chip.setTextColor(resources.getColor(R.color.accent_dark))
+            holder.chip.visibility = View.VISIBLE
+            holder.name.visibility = View.VISIBLE
+            holder.name.text = if (e.note.isNotBlank()) e.note else e.name
+            val asMovie = Api.EnMovie(id = e.id, name = e.name, poster = e.poster,
+                year = e.year, background = e.background)
+            holder.itemView.setOnFocusChangeListener { v, f ->
+                val sc = if (f) 1.08f else 1f
+                v.animate().scaleX(sc).scaleY(sc).setDuration(140).start()
+                v.translationZ = if (f) 14f else 0f
+                if (f) when (e.kind) {
+                    "movie" -> show(Spot.M(asMovie))
+                    "enseries" -> show(Spot.E(asMovie))
+                    else -> show(Spot.S(seriesById[e.id]
+                        ?: Api.Series(e.id, e.name, e.poster, null, e.background)))
+                }
+            }
+            holder.itemView.setOnClickListener {
+                when (e.kind) {
+                    "movie" -> openMovie(asMovie, autoplay = false)
+                    "enseries" -> openEnSeries(asMovie)
+                    else -> openSeries(seriesById[e.id]
+                        ?: Api.Series(e.id, e.name, e.poster, null, e.background))
+                }
+            }
+            holder.itemView.setOnLongClickListener {
+                AlertDialog.Builder(this@SeriesActivity, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                    .setTitle("Remove \"${e.name}\"?")
+                    .setMessage("It came from ${e.from}. Removing it only clears it from this row.")
+                    .setPositiveButton("Remove") { _, _ ->
+                        Thread {
+                            Household.dismiss(this@SeriesActivity, e.sentId)
+                            runOnUiThread { if (!isFinishing) fillHouseRows() }
+                        }.start()
+                    }
+                    .setNegativeButton("Keep", null)
+                    .show()
+                true
+            }
+        }
+    }
+
+    /**
+     * Fall in step with the other person.
+     *
+     * Turkish episodes go straight to the player, which resolves its own
+     * streams from the addon. English titles go through their own page
+     * instead, because those sources have to be resolved through this TV's
+     * own TorBox account before anything can play.
+     */
+    private fun joinWatcher(w: Household.Watcher) {
+        Toast.makeText(this, "Joining ${w.name}…", Toast.LENGTH_SHORT).show()
+        when (w.kind) {
+            "movie" -> startActivity(Intent(this, MovieDetailActivity::class.java)
+                .putExtra("imdbId", w.videoId.removePrefix("movie:"))
+                .putExtra("name", w.title)
+                .putExtra("poster", w.poster)
+                .putExtra("background", w.background)
+                .putExtra("autoplay", true)
+                .putExtra("together", true))
+            "enseries" -> startActivity(Intent(this, EnSeriesActivity::class.java)
+                .putExtra("imdbId", (w.seriesId ?: "").removePrefix(EnSeriesActivity.PREFIX))
+                .putExtra("name", w.title)
+                .putExtra("background", w.background)
+                .putExtra("autoplayId", w.videoId)
+                .putExtra("together", true))
+            else -> startActivity(Intent(this, PlayerActivity::class.java)
+                .putExtra("videoId", w.videoId)
+                .putExtra("videoTitle", w.title)
+                .putExtra("seriesId", w.seriesId)
+                .putExtra("seriesName", seriesById[w.seriesId ?: ""]?.name)
+                .putExtra("seriesPoster", w.poster)
+                .putExtra("seriesBackdrop", w.background)
+                .putExtra("together", true)
+                .putExtra("togetherPositionMs", w.posS * 1000L))
+        }
+    }
+
     private inner class MyListAdapter(private val items: List<MyList.Entry>) :
         RecyclerView.Adapter<MyListAdapter.VH>() {
         inner class VH(v: View) : RecyclerView.ViewHolder(v) {

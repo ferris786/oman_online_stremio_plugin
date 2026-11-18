@@ -131,6 +131,98 @@ class SettingsActivity : Activity() {
             startActivity(android.content.Intent(this, ProfilesActivity::class.java))
         }
 
+        // ---- Household: link this TV to the other one ----
+        val houseCode = findViewById<TextView>(R.id.houseCode)
+        val houseStatus = findViewById<TextView>(R.id.houseStatus)
+
+        fun paintHouse() {
+            if (!Household.linked(this)) {
+                houseStatus.text = "Not linked. Show a code on one TV and enter it on the other."
+                return
+            }
+            val others = Household.others(this)
+            houseStatus.text = if (others.isEmpty())
+                "Linked, waiting for the other TV to join"
+            else "Linked with " + others.joinToString(", ")
+        }
+        paintHouse()
+        // the member list is only as fresh as the last call, so re-ask
+        Thread { Household.refresh(this); runOnUiThread { if (!isFinishing) paintHouse() } }.start()
+
+        findViewById<Button>(R.id.houseShowCode).setOnClickListener {
+            houseStatus.text = "Getting a code…"
+            Thread {
+                val (code, err) = Household.start(this)
+                runOnUiThread {
+                    if (isFinishing) return@runOnUiThread
+                    if (code == null) {
+                        houseCode.visibility = android.view.View.GONE
+                        houseStatus.text = err ?: "Could not get a code"
+                        return@runOnUiThread
+                    }
+                    houseCode.text = code
+                    houseCode.visibility = android.view.View.VISIBLE
+                    houseStatus.text = "Enter this code on the other TV. It lasts 15 minutes."
+                }
+            }.start()
+        }
+
+        findViewById<Button>(R.id.houseEnterCode).setOnClickListener {
+            val input = EditText(this).apply {
+                hint = "6-letter code"
+                setSingleLine()
+                filters = arrayOf(android.text.InputFilter.LengthFilter(6),
+                    android.text.InputFilter.AllCaps())
+                val pad = Ui.dp(this@SettingsActivity, 16)
+                setPadding(pad, pad, pad, pad)
+            }
+            android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle("Enter the code from the other TV")
+                .setView(input)
+                .setPositiveButton("Link") { _, _ ->
+                    val code = input.text.toString().trim()
+                    if (code.length < 6) {
+                        houseStatus.text = "That code is too short"
+                        return@setPositiveButton
+                    }
+                    houseStatus.text = "Linking…"
+                    Thread {
+                        val err = Household.join(this, code)
+                        runOnUiThread {
+                            if (isFinishing) return@runOnUiThread
+                            if (err != null) { houseStatus.text = err; return@runOnUiThread }
+                            houseCode.visibility = android.view.View.GONE
+                            paintHouse()
+                            Toast.makeText(this, "Linked", Toast.LENGTH_SHORT).show()
+                        }
+                    }.start()
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+            input.requestFocus()
+        }
+
+        findViewById<Button>(R.id.houseLeave).setOnClickListener {
+            if (!Household.linked(this)) { houseStatus.text = "Not linked"; return@setOnClickListener }
+            android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle("Unlink this TV?")
+                .setMessage("You will stop seeing what the other person is watching, and anything they " +
+                    "sent you is dropped. Their TV keeps its own history. You can link again any time.")
+                .setPositiveButton("Unlink") { _, _ ->
+                    Thread {
+                        Household.leave(this)
+                        runOnUiThread {
+                            if (isFinishing) return@runOnUiThread
+                            houseCode.visibility = android.view.View.GONE
+                            paintHouse()
+                            Toast.makeText(this, "Unlinked", Toast.LENGTH_SHORT).show()
+                        }
+                    }.start()
+                }
+                .setNegativeButton("Keep linked", null)
+                .show()
+        }
+
         // ---- Diagnostics: the remote log that explains a stopped stream ----
         val diagCb = findViewById<CheckBox>(R.id.diagRemote)
         diagCb.isChecked = Diag.enabled(this)
@@ -254,7 +346,7 @@ class SettingsActivity : Activity() {
             }.start()
         }
 
-        onResumeHook = { paintProfilesStatus() }
+        onResumeHook = { paintProfilesStatus(); paintHouse() }
 
         saveBtn.setOnClickListener {
             val key = input.text.toString().trim()
