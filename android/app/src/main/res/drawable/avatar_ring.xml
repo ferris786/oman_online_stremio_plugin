@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Focus and selection for a ROUND avatar.
+     The tile used to wear the shared rectangular focus_ring, which drew a
+     square with soft corners around a circle. This rings the circle
+     instead: cream where the remote is, gold for the profile in use, and
+     the two never look the same. -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_focused="true">
+        <shape android:shape="oval">
+            <stroke android:width="4dp" android:color="@color/focus_ring" />
+            <solid android:color="#00000000" />
+        </shape>
+    </item>
+    <item android:state_selected="true">
+        <shape android:shape="oval">
+            <stroke android:width="3dp" android:color="@color/accent" />
+            <solid android:color="#00000000" />
+        </shape>
+    </item>
+    <item>
+        <shape android:shape="oval">
+            <stroke android:width="3dp" android:color="#1affffff" />
+            <solid android:color="#00000000" />
+        </shape>
+    </item>
+</selector>

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A warm vignette rather than a flat slab, so the screen has the same
+     depth as the rest of the app instead of looking like a dialog. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <gradient
+        android:type="radial"
+        android:gradientRadius="760dp"
+        android:centerX="0.5"
+        android:centerY="0.38"
+        android:startColor="#1d1b23"
+        android:centerColor="#121117"
+        android:endColor="#07070a" />
+</shape>

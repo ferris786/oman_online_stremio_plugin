@@ -1,43 +1,155 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Who is watching. A profile owns what you have watched, your list, your
-     collections, your kept Reel rows and your player skin; the TorBox
-     account and the player engine belong to the box and are shared. -->
+<!-- Who is watching.
+
+     A profile owns what you have watched, your list, your collections,
+     your kept Reel rows and your player skin. The TorBox account and the
+     player engine belong to the box and are shared.
+
+     The screen earns its own identity rather than sitting on a flat slab:
+     a warm vignette, the Cinzel display face and gold rule the rest of the
+     app uses, and the actions stated plainly at the bottom instead of
+     hidden behind a long press nobody discovers. -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/bg_deep">
+    android:background="@drawable/profiles_bg">
 
     <LinearLayout
-        android:layout_width="wrap_content"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_gravity="center"
+        android:layout_gravity="center_vertical"
         android:orientation="vertical"
-        android:gravity="center_horizontal">
+        android:gravity="center_horizontal"
+        android:paddingStart="48dp"
+        android:paddingEnd="48dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:fontFamily="@font/cinzel_medium"
+            android:text="WAHAB TV"
+            android:textColor="@color/accent"
+            android:textSize="12sp"
+            android:letterSpacing="0.42" />
 
         <TextView
             android:id="@+id/pfTitle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
             android:fontFamily="@font/cinzel_bold"
             android:text="Who is watching?"
             android:textColor="@color/title_cream"
-            android:textSize="34sp" />
+            android:textSize="38sp"
+            android:shadowColor="#cc000000"
+            android:shadowRadius="18" />
+
+        <View
+            android:layout_width="150dp"
+            android:layout_height="2dp"
+            android:layout_marginTop="14dp"
+            android:background="@drawable/rule_gold" />
 
         <TextView
             android:id="@+id/pfHint"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="OK to watch   ·   hold OK for a picture, a new name or a colour"
+            android:layout_marginTop="12dp"
+            android:text="Press OK to watch"
             android:textColor="@color/text_dim"
-            android:textSize="12sp" />
+            android:textSize="13sp"
+            android:letterSpacing="0.05" />
 
+        <!-- the tiles; the setup grid stacks rows into this same container -->
         <LinearLayout
             android:id="@+id/pfRow"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="34dp"
+            android:layout_marginTop="26dp"
             android:orientation="horizontal"
             android:gravity="center" />
+
+        <!-- Stated, not hidden. The picture actions in particular were
+             buried behind a long press, which is why nobody found them. -->
+        <LinearLayout
+            android:id="@+id/pfActions"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="28dp"
+            android:orientation="horizontal"
+            android:gravity="center">
+
+            <TextView
+                android:id="@+id/pfAdd"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@drawable/btn_primary"
+                android:focusable="true"
+                android:clickable="true"
+                android:paddingStart="20dp" android:paddingEnd="20dp"
+                android:paddingTop="11dp" android:paddingBottom="11dp"
+                android:singleLine="true"
+                android:text="＋  Add someone"
+                android:textColor="@color/btn_primary_text"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/pfPicture"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="10dp"
+                android:background="@drawable/btn_primary"
+                android:focusable="true"
+                android:clickable="true"
+                android:paddingStart="20dp" android:paddingEnd="20dp"
+                android:paddingTop="11dp" android:paddingBottom="11dp"
+                android:singleLine="true"
+                android:text="◎  Change picture"
+                android:textColor="@color/btn_primary_text"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/pfPhone"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="10dp"
+                android:background="@drawable/btn_primary"
+                android:focusable="true"
+                android:clickable="true"
+                android:paddingStart="20dp" android:paddingEnd="20dp"
+                android:paddingTop="11dp" android:paddingBottom="11dp"
+                android:singleLine="true"
+                android:text="▣  Photo from phone"
+                android:textColor="@color/btn_primary_text"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/pfEdit"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="10dp"
+                android:background="@drawable/btn_primary"
+                android:focusable="true"
+                android:clickable="true"
+                android:paddingStart="20dp" android:paddingEnd="20dp"
+                android:paddingTop="11dp" android:paddingBottom="11dp"
+                android:singleLine="true"
+                android:text="✎  Rename"
+                android:textColor="@color/btn_primary_text"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/pfFoot"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="The actions above apply to the profile you have highlighted"
+            android:textColor="@color/text_dim"
+            android:textSize="11sp" />
     </LinearLayout>
 </FrameLayout>

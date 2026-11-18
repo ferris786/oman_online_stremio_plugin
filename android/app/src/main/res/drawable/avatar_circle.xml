@@ -1,15 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Profile avatar. The fill is tinted per profile from Profiles.COLOURS. -->
-<selector xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:state_focused="true">
-        <shape android:shape="oval">
-            <solid android:color="#ffffff" />
-            <stroke android:width="3dp" android:color="#ffffff" />
-        </shape>
-    </item>
-    <item>
-        <shape android:shape="oval">
-            <solid android:color="#ffffff" />
-        </shape>
-    </item>
-</selector>
+<!-- Just the disc. It is tinted per profile from Profiles.COLOURS.
+     It used to be a selector that turned white on focus, which fought the
+     tint and did nothing visible; focus is the ring's job now. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="oval">
+    <solid android:color="#ffffff" />
+</shape>

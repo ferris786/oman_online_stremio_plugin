@@ -1,24 +1,35 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- One profile.
+
+     The avatar is round, so its focus treatment is round too: a ring that
+     sits just outside the disc. The tile used to carry the app's shared
+     rectangular focus_ring, which drew a soft-cornered SQUARE around a
+     circle and was the single ugliest thing on the screen.
+
+     Three states have to stay distinguishable: where the remote is (a
+     thick cream ring), which profile is in use (a gold ring plus a chip),
+     and everything else (a faint grey ring, so a row of avatars still
+     reads as a row of objects rather than floating discs). -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="wrap_content"
     android:layout_height="wrap_content"
-    android:layout_marginStart="12dp"
-    android:layout_marginEnd="12dp"
+    android:layout_marginStart="14dp"
+    android:layout_marginEnd="14dp"
     android:orientation="vertical"
     android:gravity="center_horizontal"
     android:clickable="true"
     android:focusable="true"
-    android:padding="10dp"
-    android:foreground="@drawable/focus_ring">
+    android:padding="6dp">
 
     <FrameLayout
-        android:layout_width="124dp"
-        android:layout_height="124dp">
+        android:layout_width="150dp"
+        android:layout_height="150dp">
 
         <TextView
             android:id="@+id/pAvatar"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
+            android:layout_width="124dp"
+            android:layout_height="124dp"
+            android:layout_gravity="center"
             android:background="@drawable/avatar_circle"
             android:duplicateParentState="true"
             android:fontFamily="@font/cinzel_bold"
@@ -29,16 +40,25 @@
         <!-- the chosen mark, or a picture, drawn over the disc -->
         <ImageView
             android:id="@+id/pAvatarImg"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
+            android:layout_width="124dp"
+            android:layout_height="124dp"
+            android:layout_gravity="center"
             android:scaleType="fitCenter"
             android:visibility="gone"
             android:contentDescription="@string/app_name" />
+
+        <!-- drawn last so the ring sits over the disc's edge, never under it -->
+        <View
+            android:id="@+id/pRing"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@drawable/avatar_ring"
+            android:duplicateParentState="true" />
     </FrameLayout>
 
     <TextView
         android:id="@+id/pName"
-        android:layout_width="124dp"
+        android:layout_width="150dp"
         android:layout_height="wrap_content"
         android:layout_marginTop="12dp"
         android:duplicateParentState="true"
@@ -46,6 +66,22 @@
         android:singleLine="true"
         android:ellipsize="end"
         android:textColor="@color/profile_name"
-        android:textSize="15sp"
+        android:textSize="16sp"
         android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/pBadge"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="7dp"
+        android:background="@drawable/chip_gold"
+        android:paddingStart="9dp" android:paddingEnd="9dp"
+        android:paddingTop="2dp" android:paddingBottom="2dp"
+        android:singleLine="true"
+        android:text="WATCHING"
+        android:textColor="@color/accent_dark"
+        android:textSize="10sp"
+        android:textStyle="bold"
+        android:letterSpacing="0.1"
+        android:visibility="gone" />
 </LinearLayout>
