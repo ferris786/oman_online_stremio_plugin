@@ -202,13 +202,10 @@ class SeriesActivity : Activity() {
         paintRail()
     }
 
-    /** the avatar carries the profile's own colour, so a glance tells you who */
+    /** the avatar carries the profile's own mark and colour, so a glance tells you who */
     private fun paintProfile() {
         val p = Profiles.active(this)
-        findViewById<TextView>(R.id.railAvatar).apply {
-            text = p.initial
-            backgroundTintList = android.content.res.ColorStateList.valueOf(p.colour)
-        }
+        Avatars.paint(this, findViewById(R.id.railAvatar), findViewById(R.id.railAvatarImg), p)
         findViewById<TextView>(R.id.railProfileName).text = p.name
         findViewById<TextView>(R.id.railProfileSub).text =
             if (Profiles.multiple(this)) "Switch profile" else "Add a profile"

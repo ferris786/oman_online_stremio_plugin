@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Profile avatar: key.
+     An original flat mark, computed geometry rather than traced artwork, on
+     a 48x48 grid. Tinted by the app, so the colour is set here to white. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M15.5,13 a8.5,8.5 0 1,0 17,0 a8.5,8.5 0 1,0 -17,0 Z M20.6,13 a3.4,3.4 0 1,0 6.8,0 a3.4,3.4 0 1,0 -6.8,0 Z M22.3,20 L25.7,20 L25.7,41 L22.3,41 Z M25.7,28.5 L31.7,28.5 L31.7,31.5 L25.7,31.5 Z M25.7,34.5 L33.7,34.5 L33.7,37.5 L25.7,37.5 Z" />
+</vector>

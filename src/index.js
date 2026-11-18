@@ -28,6 +28,8 @@ app.use(cors());
 // This has to be mounted BEFORE the global parser: body-parser marks the
 // request once parsed, so the general one below then skips it.
 app.use("/log", express.json({ limit: "256kb" }));
+// a squared 512px JPEG from a phone, as a data URL
+app.use("/avatar/upload", express.json({ limit: "4mb" }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -825,6 +827,75 @@ const addonRouter = getRouter(addonInterface);
 app.use("/", addonRouter);
 
 const PORT = process.env.PORT || 7000;
+
+// ---------------------------------------------------------------------------
+// Profile pictures.
+//
+// Anything dropped into data/avatars on this server shows up in the picker
+// on every TV in the household. That is deliberately a folder rather than a
+// baked-in set: it means artwork can be added without cutting an app
+// release, and both TVs see the same choices.
+// ---------------------------------------------------------------------------
+const AVATAR_DIR = path.join(__dirname, "../data/avatars");
+const AVATAR_TYPES = /\.(png|jpe?g|webp|gif)$/i;
+
+app.get("/avatars", (req, res) => {
+    let files = [];
+    try {
+        files = fs.readdirSync(AVATAR_DIR).filter(f => AVATAR_TYPES.test(f)).sort();
+    } catch (e) { /* no folder yet, which is fine */ }
+    const base = publicbase.get();
+    res.json({
+        avatars: files.map(f => ({
+            name: f.replace(AVATAR_TYPES, "").replace(/[-_]+/g, " "),
+            url: `${base}/avatars/${encodeURIComponent(f)}`
+        }))
+    });
+});
+
+// --- "put your own picture on the TV" from a phone, the same handshake the
+// --- TorBox pairing uses: the TV shows a QR, the phone does the rest
+const avup = require("./avatarupload");
+
+app.post("/avatar/upload/start", (req, res) => res.json({ code: avup.start() }));
+
+app.get("/avatar/qr/:code", async (req, res) => {
+    if (!avup.valid(req.params.code)) return res.status(404).end();
+    try {
+        const png = await QRCode.toBuffer(`${publicbase.get()}/avatar/upload/${req.params.code}`,
+            { width: 420, margin: 2 });
+        res.setHeader("Content-Type", "image/png");
+        res.end(png);
+    } catch (e) {
+        res.status(500).end();
+    }
+});
+
+app.get("/avatar/upload/:code/check", (req, res) => res.json(avup.check(req.params.code)));
+
+app.get("/avatar/upload/:code", (req, res) => {
+    if (!avup.valid(req.params.code)) {
+        return res.status(410).send("<h1>That code has expired</h1><p>Start again on the TV.</p>");
+    }
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.end(avup.page(String(req.params.code).toUpperCase()));
+});
+
+app.post("/avatar/upload/:code", (req, res) => {
+    const out = avup.receive(req.params.code, req.body && req.body.image,
+        req.body && req.body.who, publicbase.get());
+    if (out.error) return res.status(400).json(out);
+    res.json(out);
+});
+
+app.get("/avatars/:file", (req, res) => {
+    const name = path.basename(req.params.file || "");
+    if (!AVATAR_TYPES.test(name)) return res.status(404).end();
+    const full = path.join(AVATAR_DIR, name);
+    // basename above already strips any traversal, but be explicit about it
+    if (!full.startsWith(AVATAR_DIR)) return res.status(403).end();
+    res.sendFile(full, err => { if (err && !res.headersSent) res.status(404).end(); });
+});
 
 // ---------------------------------------------------------------------------
 // Households: two installs that know about each other. One link carries an

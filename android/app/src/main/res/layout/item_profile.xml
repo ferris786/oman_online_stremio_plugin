@@ -11,16 +11,30 @@
     android:padding="10dp"
     android:foreground="@drawable/focus_ring">
 
-    <TextView
-        android:id="@+id/pAvatar"
+    <FrameLayout
         android:layout_width="124dp"
-        android:layout_height="124dp"
-        android:background="@drawable/avatar_circle"
-        android:duplicateParentState="true"
-        android:fontFamily="@font/cinzel_bold"
-        android:gravity="center"
-        android:textColor="#1a1408"
-        android:textSize="46sp" />
+        android:layout_height="124dp">
+
+        <TextView
+            android:id="@+id/pAvatar"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@drawable/avatar_circle"
+            android:duplicateParentState="true"
+            android:fontFamily="@font/cinzel_bold"
+            android:gravity="center"
+            android:textColor="#1a1408"
+            android:textSize="46sp" />
+
+        <!-- the chosen mark, or a picture, drawn over the disc -->
+        <ImageView
+            android:id="@+id/pAvatarImg"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:scaleType="fitCenter"
+            android:visibility="gone"
+            android:contentDescription="@string/app_name" />
+    </FrameLayout>
 
     <TextView
         android:id="@+id/pName"

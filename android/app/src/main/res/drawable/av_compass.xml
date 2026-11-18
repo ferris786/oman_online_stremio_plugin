@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Profile avatar: compass.
+     An original flat mark, computed geometry rather than traced artwork, on
+     a 48x48 grid. Tinted by the app, so the colour is set here to white. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M24,7 L27.18,20.82 L41,24 L27.18,27.18 L24,41 L20.82,27.18 L7,24 L20.82,20.82 Z M31.78,16.22 L27,24 L31.78,31.78 L24,27 L16.22,31.78 L21,24 L16.22,16.22 L24,21 Z M21.4,24 a2.6,2.6 0 1,0 5.2,0 a2.6,2.6 0 1,0 -5.2,0 Z" />
+</vector>

@@ -59,7 +59,8 @@ object Profiles {
         return COLOURS[Math.abs(name.trim().lowercase().hashCode()) % COLOURS.size]
     }
 
-    data class Profile(val id: String, val name: String, val colour: Int) {
+    data class Profile(val id: String, val name: String, val colour: Int,
+                       val icon: String = "") {
         val initial: String get() = name.trim().take(1).uppercase().ifEmpty { "?" }
         val isPrimary: Boolean get() = id == PRIMARY
     }
@@ -78,7 +79,8 @@ object Profiles {
             for (i in 0 until arr.length()) {
                 val o = arr.getJSONObject(i)
                 out.add(Profile(o.optString("id"), o.optString("name", "Viewer"),
-                    o.optInt("colour", COLOURS[i % COLOURS.size])))
+                    o.optInt("colour", COLOURS[i % COLOURS.size]),
+                    o.optString("icon", "")))
             }
         }
         // the primary profile cannot be deleted away - it owns the legacy data
@@ -89,7 +91,8 @@ object Profiles {
     private fun save(ctx: Context, list: List<Profile>) {
         val arr = JSONArray()
         for (p in list) arr.put(JSONObject()
-            .put("id", p.id).put("name", p.name).put("colour", p.colour))
+            .put("id", p.id).put("name", p.name).put("colour", p.colour)
+            .put("icon", p.icon))
         device(ctx).edit().putString(ROSTER, arr.toString()).apply()
     }
 
@@ -117,7 +120,8 @@ object Profiles {
         val p = Profile(
             id = "p" + System.currentTimeMillis().toString(36),
             name = clean,
-            colour = colourFor(clean)
+            colour = colourFor(clean),
+            icon = Avatars.defaultFor(clean)
         )
         list.add(p)
         save(ctx, list)
@@ -128,9 +132,17 @@ object Profiles {
         save(ctx, all(ctx).map {
             if (it.id != id) it else {
                 val clean = name.trim().ifEmpty { it.name }
-                it.copy(name = clean, colour = colourFor(clean))
+                // a renamed profile that never chose an icon takes the one
+                // that suits its new name; a deliberate choice is left alone
+                val icon = if (it.icon.isEmpty() || it.icon == Avatars.defaultFor(it.name))
+                    Avatars.defaultFor(clean) else it.icon
+                it.copy(name = clean, colour = colourFor(clean), icon = icon)
             }
         })
+    }
+
+    fun setIcon(ctx: Context, id: String, icon: String) {
+        save(ctx, all(ctx).map { if (it.id == id) it.copy(icon = icon) else it })
     }
 
     fun recolour(ctx: Context, id: String) {

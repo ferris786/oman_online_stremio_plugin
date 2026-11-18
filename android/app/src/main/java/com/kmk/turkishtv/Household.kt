@@ -265,6 +265,43 @@ object Household {
         return out
     }
 
+    // -------------------------------------------------------- profile pictures
+
+    /**
+     * Pictures dropped into data/avatars on the server. Shared by every TV,
+     * so a picture added once is offered to everyone.
+     */
+    fun avatarPictures(ctx: Context): List<Pair<String, String>> {
+        val j = try { get("/avatars") } catch (e: Exception) { return emptyList() }
+        val arr = j.optJSONArray("avatars") ?: return emptyList()
+        val out = ArrayList<Pair<String, String>>(arr.length())
+        for (i in 0 until arr.length()) {
+            val o = arr.optJSONObject(i) ?: continue
+            val url = o.optString("url")
+            if (url.isNotBlank()) out.add(Pair(o.optString("name"), url))
+        }
+        return out
+    }
+
+    /**
+     * Start a phone upload. The TV shows the QR and the code; the phone
+     * squares the photo off and sends it. Returns the code, or null.
+     */
+    fun avatarUploadStart(): String? {
+        val j = try { post("/avatar/upload/start", JSONObject()) } catch (e: Exception) { return null }
+        return j.optString("code").takeIf { it.isNotBlank() }
+    }
+
+    /** "waiting" until the phone sends something, then the picture's URL. */
+    fun avatarUploadCheck(code: String): Pair<String, String?> {
+        val j = try { get("/avatar/upload/$code/check") } catch (e: Exception) {
+            return Pair("waiting", null)
+        }
+        return Pair(j.optString("status", "waiting"), j.strOrNull("url"))
+    }
+
+    fun avatarQrUrl(code: String): String = Config.BASE_URL + "/avatar/qr/" + code
+
     // ------------------------------------------------------------ the room
 
     private fun parseRoom(j: JSONObject): Room? {

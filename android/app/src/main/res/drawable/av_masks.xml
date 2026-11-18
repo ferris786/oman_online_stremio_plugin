@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Profile avatar: masks.
+     An original flat mark, computed geometry rather than traced artwork, on
+     a 48x48 grid. Tinted by the app, so the colour is set here to white. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M7,14 C6,26 10,36 15,36 C20,36 24,26 23,14 Z M10.3,21 a1.5,2.1 0 1,0 3,0 a1.5,2.1 0 1,0 -3,0 Z M16.7,21 a1.5,2.1 0 1,0 3,0 a1.5,2.1 0 1,0 -3,0 Z M11,27 C13,31 17,31 19,27 C17,29.5 13,29.5 11,27 Z M25,14 C24,26 28,36 33,36 C38,36 42,26 41,14 Z M28.3,21 a1.5,2.1 0 1,0 3,0 a1.5,2.1 0 1,0 -3,0 Z M34.7,21 a1.5,2.1 0 1,0 3,0 a1.5,2.1 0 1,0 -3,0 Z M29,31 C31,27 35,27 37,31 C35,28.5 31,28.5 29,31 Z" />
+</vector>

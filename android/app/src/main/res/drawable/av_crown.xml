@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Profile avatar: crown.
+     An original flat mark, computed geometry rather than traced artwork, on
+     a 48x48 grid. Tinted by the app, so the colour is set here to white. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M10,34 L13,15 L19,23 L24,12 L29,23 L35,15 L38,34 Z M11.4,35.5 L36.6,35.5 A1.4,1.4 0 0,1 38,36.9 L38,38.1 A1.4,1.4 0 0,1 36.6,39.5 L11.4,39.5 A1.4,1.4 0 0,1 10,38.1 L10,36.9 A1.4,1.4 0 0,1 11.4,35.5 Z" />
+</vector>

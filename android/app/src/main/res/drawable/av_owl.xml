@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Profile avatar: owl.
+     An original flat mark, computed geometry rather than traced artwork, on
+     a 48x48 grid. Tinted by the app, so the colour is set here to white. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M11,17 L13,8 L20.5,13.5 C22.5,12.8 25.5,12.8 27.5,13.5 L35,8 L37,17 C38.3,19.7 39,22.7 39,26 C39,34 32.3,41 24,41 C15.7,41 9,34 9,26 C9,22.7 9.7,19.7 11,17 Z M12,23 a5.6,5.6 0 1,0 11.2,0 a5.6,5.6 0 1,0 -11.2,0 Z M15.4,23 a2.2,2.2 0 1,0 4.4,0 a2.2,2.2 0 1,0 -4.4,0 Z M24.8,23 a5.6,5.6 0 1,0 11.2,0 a5.6,5.6 0 1,0 -11.2,0 Z M28.2,23 a2.2,2.2 0 1,0 4.4,0 a2.2,2.2 0 1,0 -4.4,0 Z M24,25.5 L26.6,30.5 L21.4,30.5 Z" />
+</vector>

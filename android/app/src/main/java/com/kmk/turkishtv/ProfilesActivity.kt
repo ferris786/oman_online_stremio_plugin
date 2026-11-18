@@ -24,6 +24,9 @@ class ProfilesActivity : Activity() {
     companion object {
         /** set once the picker has been offered, so it asks on a cold start only */
         var askedThisLaunch = false
+
+        /** the picker entry that opens the phone upload rather than setting an icon */
+        private const val PHONE = "::phone"
     }
 
     private lateinit var row: LinearLayout
@@ -119,10 +122,8 @@ class ProfilesActivity : Activity() {
 
         for (p in profiles) {
             val tile = layoutInflater.inflate(R.layout.item_profile, row, false)
-            val avatar = tile.findViewById<TextView>(R.id.pAvatar)
             val name = tile.findViewById<TextView>(R.id.pName)
-            avatar.text = p.initial
-            avatar.backgroundTintList = android.content.res.ColorStateList.valueOf(p.colour)
+            Avatars.paint(this, tile.findViewById(R.id.pAvatar), tile.findViewById(R.id.pAvatarImg), p)
             name.text = if (p.id == activeId) "${p.name}  ·  watching" else p.name
             Ui.focusLift(tile, 1.06f)
             tile.setOnClickListener { choose(p) }
@@ -186,6 +187,7 @@ class ProfilesActivity : Activity() {
 
     private fun editMenu(p: Profiles.Profile) {
         val options = ArrayList<String>()
+        options.add("Choose a picture")
         options.add("Rename")
         options.add("Change colour")
         // the first profile holds the history the app has always had, so it stays
@@ -198,11 +200,186 @@ class ProfilesActivity : Activity() {
                     "Rename" -> pickKnownName("Rename ${p.name} to") {
                         Profiles.rename(this, p.id, it); build()
                     }
+                    "Choose a picture" -> pickIcon(p)
                     "Change colour" -> { Profiles.recolour(this, p.id); build() }
                     "Remove this profile" -> confirmRemove(p)
                 }
             }
             .show()
+    }
+
+    /**
+     * Put your own picture on the TV, from a phone.
+     *
+     * The same handshake as the TorBox pairing: a QR and a short code on
+     * the television, everything else on the phone. The TV polls until the
+     * picture lands and then wears it straight away, so there is nothing to
+     * confirm with a remote.
+     */
+    private fun uploadFromPhone(p: Profiles.Profile) {
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = android.view.Gravity.CENTER_HORIZONTAL
+            val pad = Ui.dp(this@ProfilesActivity, 18)
+            setPadding(pad, pad, pad, pad)
+        }
+        val qr = android.widget.ImageView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                Ui.dp(this@ProfilesActivity, 220), Ui.dp(this@ProfilesActivity, 220))
+        }
+        val codeView = TextView(this).apply {
+            textSize = 24f
+            letterSpacing = 0.2f
+            setTextColor(resources.getColor(R.color.accent))
+            gravity = android.view.Gravity.CENTER
+            setPadding(0, Ui.dp(this@ProfilesActivity, 12), 0, 0)
+        }
+        val hint = TextView(this).apply {
+            text = "Scan with your phone, pick a photo, and it appears here."
+            textSize = 13f
+            setTextColor(resources.getColor(R.color.text_dim))
+            gravity = android.view.Gravity.CENTER
+            setPadding(0, Ui.dp(this@ProfilesActivity, 8), 0, 0)
+        }
+        box.addView(qr); box.addView(codeView); box.addView(hint)
+
+        val dialog = AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle("A picture for ${p.name}")
+            .setView(box)
+            .setNegativeButton("Cancel", null)
+            .show()
+
+        codeView.text = "…"
+        Thread {
+            val code = Household.avatarUploadStart()
+            if (code == null) {
+                runOnUiThread {
+                    if (!isFinishing) {
+                        hint.text = "Could not reach the server"
+                        codeView.text = ""
+                    }
+                }
+                return@Thread
+            }
+            runOnUiThread {
+                if (isFinishing || !dialog.isShowing) return@runOnUiThread
+                codeView.text = code
+                coil.Coil.imageLoader(this).enqueue(
+                    coil.request.ImageRequest.Builder(this)
+                        .data(Household.avatarQrUrl(code)).target(qr).build())
+            }
+            // poll until the phone sends something, or the code dies
+            val deadline = System.currentTimeMillis() + 15 * 60 * 1000
+            while (System.currentTimeMillis() < deadline) {
+                Thread.sleep(2500)
+                if (isFinishing || !dialog.isShowing) return@Thread
+                val (status, url) = Household.avatarUploadCheck(code)
+                if (status == "ready" && url != null) {
+                    Profiles.setIcon(this, p.id, url)
+                    runOnUiThread {
+                        if (isFinishing) return@runOnUiThread
+                        dialog.dismiss()
+                        Toast.makeText(this, "Picture set for ${p.name}", Toast.LENGTH_SHORT).show()
+                        build()
+                    }
+                    return@Thread
+                }
+                if (status == "expired") {
+                    runOnUiThread { if (!isFinishing) hint.text = "That code expired. Try again." }
+                    return@Thread
+                }
+            }
+        }.start()
+    }
+
+    /**
+     * The picture picker: the built-in marks first, then anything dropped
+     * into the server's avatar folder. A grid in a dialog rather than a new
+     * screen, so it is one press away from the profile it belongs to.
+     */
+    private fun pickIcon(p: Profiles.Profile) {
+        val grid = androidx.recyclerview.widget.RecyclerView(this).apply {
+            layoutManager = androidx.recyclerview.widget.GridLayoutManager(this@ProfilesActivity, 6)
+            setPadding(Ui.dp(this@ProfilesActivity, 12), Ui.dp(this@ProfilesActivity, 12),
+                Ui.dp(this@ProfilesActivity, 12), Ui.dp(this@ProfilesActivity, 12))
+            clipToPadding = false
+        }
+        val dialog = AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle("Pick a picture for ${p.name}")
+            .setView(grid)
+            .setNegativeButton("Cancel", null)
+            .show()
+
+        // built-ins are instant; the server's folder arrives when it arrives
+        var options: List<Pair<String, String>> =
+            listOf(Pair("From phone", PHONE)) +
+            Avatars.BUILT_IN.map { (key, _) -> Pair(key, "av:$key") }
+        grid.adapter = IconAdapter(p, options, dialog)
+        Thread {
+            val pictures = Household.avatarPictures(this)
+            if (pictures.isEmpty()) return@Thread
+            runOnUiThread {
+                if (isFinishing || !dialog.isShowing) return@runOnUiThread
+                options = options + pictures
+                grid.adapter = IconAdapter(p, options, dialog)
+            }
+        }.start()
+    }
+
+    private inner class IconAdapter(
+        private val profile: Profiles.Profile,
+        private val options: List<Pair<String, String>>,
+        private val dialog: AlertDialog
+    ) : androidx.recyclerview.widget.RecyclerView.Adapter<IconAdapter.VH>() {
+        inner class VH(v: android.view.View) :
+            androidx.recyclerview.widget.RecyclerView.ViewHolder(v) {
+            val letter: TextView = v.findViewById(R.id.pAvatar)
+            val image: android.widget.ImageView = v.findViewById(R.id.pAvatarImg)
+            val label: TextView = v.findViewById(R.id.pName)
+        }
+        override fun onCreateViewHolder(parent: android.view.ViewGroup, viewType: Int): VH {
+            val v = layoutInflater.inflate(R.layout.item_profile, parent, false)
+            // the tiles are 124dp on the profile screen, far too big for a grid
+            val d = Ui.dp(this@ProfilesActivity, 64)
+            v.findViewById<android.view.View>(R.id.pAvatar).layoutParams =
+                v.findViewById<android.view.View>(R.id.pAvatar).layoutParams.apply { width = d; height = d }
+            v.findViewById<android.view.View>(R.id.pAvatarImg).layoutParams =
+                v.findViewById<android.view.View>(R.id.pAvatarImg).layoutParams.apply { width = d; height = d }
+            (v.findViewById<android.view.View>(R.id.pAvatar).parent as android.view.View).layoutParams =
+                android.widget.LinearLayout.LayoutParams(d, d)
+            v.findViewById<TextView>(R.id.pName).apply {
+                layoutParams = layoutParams.apply { width = Ui.dp(this@ProfilesActivity, 76) }
+                textSize = 10f
+            }
+            return VH(v)
+        }
+        override fun getItemCount() = options.size
+        override fun onBindViewHolder(holder: VH, position: Int) {
+            val (name, value) = options[position]
+            if (value == PHONE) {
+                holder.image.visibility = android.view.View.GONE
+                holder.letter.text = "\uD83D\uDCF1"
+                holder.letter.backgroundTintList =
+                    android.content.res.ColorStateList.valueOf(0xFF2A2A33.toInt())
+            } else {
+                // paint it as if the profile already had this icon
+                Avatars.paint(this@ProfilesActivity, holder.letter, holder.image,
+                    profile.copy(icon = value))
+            }
+            holder.label.text = name
+            Ui.focusLift(holder.itemView, 1.1f)
+            holder.itemView.setOnClickListener {
+                if (value == PHONE) {
+                    dialog.dismiss()
+                    uploadFromPhone(profile)
+                } else {
+                    Profiles.setIcon(this@ProfilesActivity, profile.id, value)
+                    dialog.dismiss()
+                    build()
+                }
+            }
+            if (value == profile.icon) holder.itemView.post { holder.itemView.requestFocus() }
+        }
     }
 
     private fun confirmRemove(p: Profiles.Profile) {

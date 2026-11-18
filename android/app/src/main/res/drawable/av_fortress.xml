@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Profile avatar: fortress.
+     An original flat mark, computed geometry rather than traced artwork, on
+     a 48x48 grid. Tinted by the app, so the colour is set here to white. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M7,19 L17,19 L17,41 L7,41 Z M7,15.5 L9,15.5 L9,19 L7,19 Z M11,15.5 L13,15.5 L13,19 L11,19 Z M15,15.5 L17,15.5 L17,19 L15,19 Z M31,19 L41,19 L41,41 L31,41 Z M31,15.5 L33,15.5 L33,19 L31,19 Z M35,15.5 L37,15.5 L37,19 L35,19 Z M39,15.5 L41,15.5 L41,19 L39,19 Z M17,24 L31,24 L31,41 L17,41 Z M17,20.5 L19.8,20.5 L19.8,24 L17,24 Z M22.6,20.5 L25.4,20.5 L25.4,24 L22.6,24 Z M28.2,20.5 L31,20.5 L31,24 L28.2,24 Z M20.5,41 L20.5,33 C20.5,31 22,29.5 24,29.5 C26,29.5 27.5,31 27.5,33 L27.5,41 Z" />
+</vector>

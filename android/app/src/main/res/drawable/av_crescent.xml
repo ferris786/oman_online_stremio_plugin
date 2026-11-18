@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Profile avatar: crescent.
+     An original flat mark, computed geometry rather than traced artwork, on
+     a 48x48 grid. Tinted by the app, so the colour is set here to white. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M6.5,24 a15,15 0 1,0 30,0 a15,15 0 1,0 -30,0 Z M15,24 a13,13 0 1,0 26,0 a13,13 0 1,0 -26,0 Z M32.5,18.2 L33.91,22.06 L38.02,22.21 L34.78,24.74 L35.91,28.69 L32.5,26.4 L29.09,28.69 L30.22,24.74 L26.98,22.21 L31.09,22.06 Z" />
+</vector>

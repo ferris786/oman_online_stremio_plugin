@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Profile avatar: ship.
+     An original flat mark, computed geometry rather than traced artwork, on
+     a 48x48 grid. Tinted by the app, so the colour is set here to white. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M7,29 L41,29 C38.5,37 32,41 24,41 C16,41 9.5,37 7,29 Z M22.8,6 L25.2,6 L25.2,29 L22.8,29 Z M26,9 L37,22 L26,22 Z M22,12 L22,22 L12,22 Z M25.2,4.5 L33,7 L25.2,9.5 Z" />
+</vector>

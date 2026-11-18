@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Profile avatar: swords.
+     An original flat mark, computed geometry rather than traced artwork, on
+     a 48x48 grid. Tinted by the app, so the colour is set here to white. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M10.91,31.46 L30.57,17.69 L36.7,15.11 L32.18,19.98 L12.52,33.75 Z M13.64,25.76 L15.28,24.62 L20.44,31.99 L18.8,33.14 Z M9.81,30.76 L12.27,29.04 L15.25,33.3 L12.79,35.02 Z M12.52,14.25 L32.18,28.02 L36.7,32.89 L30.57,30.31 L10.91,16.54 Z M18.8,14.86 L20.44,16.01 L15.28,23.38 L13.64,22.24 Z M12.79,12.98 L15.25,14.7 L12.27,18.96 L9.81,17.24 Z" />
+</vector>

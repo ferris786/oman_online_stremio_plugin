@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Profile avatar: lantern.
+     An original flat mark, computed geometry rather than traced artwork, on
+     a 48x48 grid. Tinted by the app, so the colour is set here to white. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M22.5,6 L25.5,6 L25.5,10 L22.5,10 Z M17.2,10 L30.8,10 A1.2,1.2 0 0,1 32,11.2 L32,11.8 A1.2,1.2 0 0,1 30.8,13 L17.2,13 A1.2,1.2 0 0,1 16,11.8 L16,11.2 A1.2,1.2 0 0,1 17.2,10 Z M18,13 L30,13 C32.5,19 32.5,28 30,34 L18,34 C15.5,28 15.5,19 18,13 Z M18.2,34 L29.8,34 A1.2,1.2 0 0,1 31,35.2 L31,35.8 A1.2,1.2 0 0,1 29.8,37 L18.2,37 A1.2,1.2 0 0,1 17,35.8 L17,35.2 A1.2,1.2 0 0,1 18.2,34 Z M23.7,37 L24.3,37 A1.2,1.2 0 0,1 25.5,38.2 L25.5,40.3 A1.2,1.2 0 0,1 24.3,41.5 L23.7,41.5 A1.2,1.2 0 0,1 22.5,40.3 L22.5,38.2 A1.2,1.2 0 0,1 23.7,37 Z" />
+</vector>

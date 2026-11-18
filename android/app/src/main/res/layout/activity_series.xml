@@ -186,6 +186,15 @@
                     android:text="W"
                     android:textColor="#1a1408"
                     android:textSize="18sp" />
+
+                <ImageView
+                    android:id="@+id/railAvatarImg"
+                    android:layout_width="38dp"
+                    android:layout_height="38dp"
+                    android:layout_gravity="center"
+                    android:scaleType="fitCenter"
+                    android:visibility="gone"
+                    android:contentDescription="@string/app_name" />
             </FrameLayout>
 
             <LinearLayout
