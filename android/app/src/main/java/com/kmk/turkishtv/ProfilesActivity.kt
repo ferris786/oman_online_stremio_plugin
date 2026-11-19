@@ -156,7 +156,7 @@ class ProfilesActivity : Activity() {
             } else {
                 // show the mark they would get, not just a letter
                 Avatars.paint(this, letter, image, Profiles.Profile(
-                    "", name, Profiles.colourFor(name), Avatars.defaultFor(name)))
+                    "", name, Profiles.colourFor(name), Avatars.defaultFor(this, name)))
             }
             tile.findViewById<TextView>(R.id.pName).text = name
             Ui.focusLift(tile, 1.08f)
@@ -297,9 +297,16 @@ class ProfilesActivity : Activity() {
             .show()
 
         // built-ins are instant; the server's folder arrives when it arrives
+        // Painted artwork first, then the flat marks as the simple option.
+        // The marks are only labelled "flat" when there is a painted set to
+        // tell them apart from; on their own that suffix means nothing.
+        val painted = Avatars.art(this)
         var options: List<Pair<String, String>> =
             listOf(Pair("From phone", PHONE)) +
-            Avatars.BUILT_IN.map { (key, _) -> Pair(key, "av:$key") }
+            painted.map { (key, _) -> Pair(key, "art:$key") } +
+            Avatars.BUILT_IN.map { (key, _) ->
+                Pair(if (painted.isEmpty()) key else "$key (flat)", "av:$key")
+            }
         grid.adapter = IconAdapter(p, options, dialog)
         Thread {
             val pictures = Household.avatarPictures(this)

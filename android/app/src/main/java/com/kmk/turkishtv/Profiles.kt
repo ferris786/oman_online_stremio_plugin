@@ -121,7 +121,7 @@ object Profiles {
             id = "p" + System.currentTimeMillis().toString(36),
             name = clean,
             colour = colourFor(clean),
-            icon = Avatars.defaultFor(clean)
+            icon = Avatars.defaultFor(ctx, clean)
         )
         list.add(p)
         save(ctx, list)
@@ -134,8 +134,8 @@ object Profiles {
                 val clean = name.trim().ifEmpty { it.name }
                 // a renamed profile that never chose an icon takes the one
                 // that suits its new name; a deliberate choice is left alone
-                val icon = if (it.icon.isEmpty() || it.icon == Avatars.defaultFor(it.name))
-                    Avatars.defaultFor(clean) else it.icon
+                val icon = if (it.icon.isEmpty() || it.icon == Avatars.defaultFor(ctx, it.name))
+                    Avatars.defaultFor(ctx, clean) else it.icon
                 it.copy(name = clean, colour = colourFor(clean), icon = icon)
             }
         })
