@@ -23,7 +23,7 @@ object Api {
         val genres: List<String> = emptyList(), val year: String? = null,
         val lastAired: String? = null, val nextAir: String? = null,
         val episodeCount: Int = 0, val seasonCount: Int = 0,
-        val trailer: String? = null
+        val trailer: String? = null, val rating: String? = null
     ) {
         /** aired within the last N days (server date strings are yyyy-mm-dd) */
         fun airedWithinDays(days: Int): Boolean = Ui.daysSince(lastAired)?.let { it in 0..days } ?: false
@@ -76,7 +76,7 @@ object Api {
         m.getString("id"), m.getString("name"), m.str("poster"), m.str("description"),
         m.str("background"), m.str("logo"), m.strList("genres"), m.str("year"),
         m.str("lastAired"), m.str("nextAir"), m.optInt("episodeCount", 0), m.optInt("seasonCount", 0),
-        m.str("trailer")
+        m.str("trailer"), m.str("rating")
     )
 
     private fun parseSeriesList(body: String): List<Series> {

@@ -197,6 +197,7 @@ class SearchActivity : Activity() {
             val name: TextView = v.findViewById(R.id.name)
             val poster: ImageView = v.findViewById(R.id.poster)
             val chip: TextView = v.findViewById(R.id.chip)
+            val score: TextView = v.findViewById(R.id.score)
         }
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH =
@@ -208,6 +209,13 @@ class SearchActivity : Activity() {
             val hit = items[position]
             holder.name.visibility = View.VISIBLE
             holder.chip.visibility = View.GONE
+            // a person has no score; the three title kinds each carry one
+            Ui.showScore(holder.score, when (hit) {
+                is Hit.S -> hit.s.rating
+                is Hit.M -> hit.m.rating
+                is Hit.T -> hit.t.rating
+                is Hit.P -> null
+            })
             Ui.focusLift(holder.itemView)
             when (hit) {
                 is Hit.S -> {

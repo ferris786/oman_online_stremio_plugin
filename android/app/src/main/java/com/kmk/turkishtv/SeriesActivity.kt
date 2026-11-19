@@ -405,6 +405,7 @@ class SeriesActivity : Activity() {
         inner class VH(v: View) : RecyclerView.ViewHolder(v) {
             val poster: ImageView = v.findViewById(R.id.poster)
             val chip: TextView = v.findViewById(R.id.chip)
+            val score: TextView = v.findViewById(R.id.score)
         }
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) =
             VH(layoutInflater.inflate(R.layout.item_poster, parent, false))
@@ -412,6 +413,9 @@ class SeriesActivity : Activity() {
         override fun onBindViewHolder(holder: VH, position: Int) {
             val e = items[position]
             Ui.loadImage(holder.poster, e.poster, 4f, R.drawable.placeholder_poster)
+            // a saved entry carries no score of its own; the Turkish ones can
+            // borrow it from the catalogue already in memory
+            Ui.showScore(holder.score, seriesById[e.id]?.rating)
             holder.chip.text = when (e.kind) { "movie" -> "FILM"; "enseries" -> "SERIES"; else -> "TÜRK" }
             holder.chip.setBackgroundResource(R.drawable.chip_gold)
             holder.chip.setTextColor(resources.getColor(R.color.accent_dark))
@@ -572,6 +576,7 @@ class SeriesActivity : Activity() {
         RecyclerView.Adapter<SuggestionAdapter.VH>() {
         inner class VH(v: View) : RecyclerView.ViewHolder(v) {
             val poster: ImageView = v.findViewById(R.id.poster)
+            val score: TextView = v.findViewById(R.id.score)
         }
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) =
             VH(layoutInflater.inflate(R.layout.item_poster, parent, false))
@@ -579,6 +584,7 @@ class SeriesActivity : Activity() {
         override fun onBindViewHolder(holder: VH, position: Int) {
             val s = items[position]
             Ui.loadImage(holder.poster, s.poster, 4f, R.drawable.placeholder_poster)
+            Ui.showScore(holder.score, s.rating)
             holder.itemView.setOnFocusChangeListener { v, f ->
                 val sc = if (f) 1.08f else 1f
                 v.animate().scaleX(sc).scaleY(sc).setDuration(140).start()
@@ -1061,6 +1067,7 @@ class SeriesActivity : Activity() {
         inner class VH(v: View) : RecyclerView.ViewHolder(v) {
             val poster: ImageView = v.findViewById(R.id.poster)
             val chip: TextView = v.findViewById(R.id.chip)
+            val score: TextView = v.findViewById(R.id.score)
         }
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) =
             VH(layoutInflater.inflate(R.layout.item_poster, parent, false))
@@ -1068,6 +1075,7 @@ class SeriesActivity : Activity() {
         override fun onBindViewHolder(holder: VH, position: Int) {
             val s = items[position]
             Ui.loadImage(holder.poster, s.poster, 4f, R.drawable.placeholder_poster)
+            Ui.showScore(holder.score, s.rating)
             holder.chip.visibility = if (showNew || s.airedWithinDays(Ui.NEW_WINDOW_DAYS)) View.VISIBLE else View.GONE
             holder.itemView.setOnFocusChangeListener { v, f ->
                 val sc = if (f) 1.08f else 1f
@@ -1083,6 +1091,7 @@ class SeriesActivity : Activity() {
         RecyclerView.Adapter<EnSeriesAdapter.VH>() {
         inner class VH(v: View) : RecyclerView.ViewHolder(v) {
             val poster: ImageView = v.findViewById(R.id.poster)
+            val score: TextView = v.findViewById(R.id.score)
         }
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) =
             VH(layoutInflater.inflate(R.layout.item_poster, parent, false))
@@ -1090,6 +1099,7 @@ class SeriesActivity : Activity() {
         override fun onBindViewHolder(holder: VH, position: Int) {
             val m = items[position]
             Ui.loadImage(holder.poster, m.poster, 4f, R.drawable.placeholder_poster)
+            Ui.showScore(holder.score, m.rating)
             holder.itemView.setOnFocusChangeListener { v, f ->
                 val sc = if (f) 1.08f else 1f
                 v.animate().scaleX(sc).scaleY(sc).setDuration(140).start()
@@ -1231,6 +1241,7 @@ class SeriesActivity : Activity() {
         inner class VH(v: View) : RecyclerView.ViewHolder(v) {
             val poster: ImageView = v.findViewById(R.id.poster)
             val chip: TextView = v.findViewById(R.id.chip)
+            val score: TextView = v.findViewById(R.id.score)
         }
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) =
             VH(layoutInflater.inflate(R.layout.item_poster, parent, false))
@@ -1238,6 +1249,9 @@ class SeriesActivity : Activity() {
         override fun onBindViewHolder(holder: VH, position: Int) {
             val e = items[position]
             Ui.loadImage(holder.poster, e.poster, 4f, R.drawable.placeholder_poster)
+            // a saved entry carries no score of its own; the Turkish ones can
+            // borrow it from the catalogue already in memory
+            Ui.showScore(holder.score, seriesById[e.id]?.rating)
             holder.chip.text = when (e.kind) { "movie" -> "FILM"; "enseries" -> "SERIES"; else -> "TÜRK" }
             holder.chip.setBackgroundResource(R.drawable.chip_gold)
             holder.chip.setTextColor(resources.getColor(R.color.accent_dark))
@@ -1268,6 +1282,7 @@ class SeriesActivity : Activity() {
         RecyclerView.Adapter<MovieAdapter.VH>() {
         inner class VH(v: View) : RecyclerView.ViewHolder(v) {
             val poster: ImageView = v.findViewById(R.id.poster)
+            val score: TextView = v.findViewById(R.id.score)
         }
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) =
             VH(layoutInflater.inflate(R.layout.item_poster, parent, false))
@@ -1275,6 +1290,7 @@ class SeriesActivity : Activity() {
         override fun onBindViewHolder(holder: VH, position: Int) {
             val m = items[position]
             Ui.loadImage(holder.poster, m.poster, 4f, R.drawable.placeholder_poster)
+            Ui.showScore(holder.score, m.rating)
             holder.itemView.setOnFocusChangeListener { v, f ->
                 val sc = if (f) 1.08f else 1f
                 v.animate().scaleX(sc).scaleY(sc).setDuration(140).start()

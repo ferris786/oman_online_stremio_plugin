@@ -274,6 +274,7 @@ class SpinActivity : Activity() {
         inner class VH(v: View) : RecyclerView.ViewHolder(v) {
             val poster: ImageView = v.findViewById(R.id.poster)
             val name: TextView = v.findViewById(R.id.name)
+            val score: TextView = v.findViewById(R.id.score)
         }
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) =
             VH(layoutInflater.inflate(R.layout.item_poster, parent, false))
@@ -283,6 +284,7 @@ class SpinActivity : Activity() {
             holder.name.visibility = View.VISIBLE
             holder.name.text = if (s.year != null) "${s.name} (${s.year})" else s.name
             Ui.loadImage(holder.poster, s.poster, 4f, R.drawable.placeholder_poster)
+            Ui.showScore(holder.score, s.rating)
             Ui.focusLift(holder.itemView)
             holder.itemView.setOnClickListener { open(s) }
         }

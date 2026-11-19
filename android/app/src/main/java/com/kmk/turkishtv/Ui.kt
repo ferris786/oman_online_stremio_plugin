@@ -28,6 +28,31 @@ object Ui {
         }
     }
 
+    /**
+     * The score badge on a card.
+     *
+     * One helper rather than the same five lines in every adapter, because
+     * the rule is the same everywhere: show it only when a score is
+     * actually known, and never show a bare zero. A title with no rating
+     * yet is not a nought-out-of-ten.
+     *
+     * Ratings arrive as strings from two sources, IMDb through Cinemeta and
+     * TMDB's own average, so they are parsed rather than trusted.
+     */
+    fun showScore(badge: android.widget.TextView?, rating: String?) {
+        val v = badge ?: return
+        val n = rating?.trim()?.toFloatOrNull()
+        if (n == null || n <= 0f) {
+            v.visibility = View.GONE
+            return
+        }
+        v.text = "★ " + (if (n >= 10f) "10" else String.format(java.util.Locale.US, "%.1f", n))
+        // green for the ones worth stopping on, gold for the rest, so a row
+        // can be skimmed without reading a single number
+        v.setTextColor(if (n >= 7.5f) 0xFF8CC47C.toInt() else 0xFFE0B34D.toInt())
+        v.visibility = View.VISIBLE
+    }
+
     fun loadImage(target: ImageView, url: String?, radiusDp: Float = 4f, placeholder: Int = R.drawable.still_bg, crossfadeMs: Int = 200) {
         val ctx = target.context
         val px = radiusDp * ctx.resources.displayMetrics.density

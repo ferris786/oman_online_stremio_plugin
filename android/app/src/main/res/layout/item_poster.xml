@@ -44,4 +44,22 @@
         android:maxLines="2"
         android:ellipsize="end"
         android:visibility="gone" />
+
+    <!-- Score, bottom-left so it never collides with the NEW chip at the
+         top-right or the title bar along the bottom edge. Shown only when
+         a rating is actually known. -->
+    <TextView
+        android:id="@+id/score"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|start"
+        android:layout_margin="6dp"
+        android:background="@drawable/chip_score"
+        android:paddingStart="5dp" android:paddingEnd="6dp"
+        android:paddingTop="2dp" android:paddingBottom="2dp"
+        android:singleLine="true"
+        android:textColor="@color/accent"
+        android:textSize="10sp"
+        android:textStyle="bold"
+        android:visibility="gone" />
 </FrameLayout>

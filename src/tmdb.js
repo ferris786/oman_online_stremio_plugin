@@ -61,7 +61,7 @@ const TMDB_IDS = {
 // Bump when the cached SHAPE changes, so a deploy does not keep serving
 // records that predate a new field. (v2 added `trailer` to shows; without
 // this the VPS kept 24 trailer-less shows for the whole 12h TTL.)
-const CACHE_SCHEMA = 2;
+const CACHE_SCHEMA = 3;
 
 let cache = { schema: CACHE_SCHEMA, search: {}, shows: {}, seasons: {} };
 let saveTimer = null;
@@ -197,6 +197,8 @@ async function show(id) {
             nextAir: d.next_episode_to_air ? d.next_episode_to_air.air_date : null,
             runtime: Array.isArray(d.episode_run_time) && d.episode_run_time.length ? d.episode_run_time[0] : null,
             status: d.status || null,
+            // the score, so a poster can show it without opening the page
+            rating: d.vote_average ? d.vote_average.toFixed(1) : null,
             trailer: pickTrailer((d.videos && d.videos.results) || []),
             seasons,
             episodeCount: seasons.reduce((a, s) => a + s.count, 0)
@@ -290,6 +292,7 @@ async function enrichAll(seriesList, concurrency = 4) {
                 s.nextAir = d.nextAir;
                 s.runtime = d.runtime;
                 s.status = d.status;
+                s.rating = d.rating;
                 s.trailer = d.trailer;
                 s.seasonCount = d.seasons.length;
                 s.episodeCount = d.episodeCount;

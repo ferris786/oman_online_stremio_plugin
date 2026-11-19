@@ -23,8 +23,8 @@
 
         <TextView
             android:id="@+id/pAvatar"
-            android:layout_width="76dp"
-            android:layout_height="76dp"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
             android:layout_gravity="center"
             android:background="@drawable/avatar_circle"
             android:duplicateParentState="true"
@@ -35,8 +35,8 @@
 
         <ImageView
             android:id="@+id/pAvatarImg"
-            android:layout_width="76dp"
-            android:layout_height="76dp"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
             android:layout_gravity="center"
             android:scaleType="fitCenter"
             android:visibility="gone"
