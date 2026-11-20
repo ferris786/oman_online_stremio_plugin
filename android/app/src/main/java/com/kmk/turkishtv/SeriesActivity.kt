@@ -243,6 +243,7 @@ class SeriesActivity : Activity() {
         keptRows.clear()
         lastFocusedRow = null
         lastSnapY = Int.MIN_VALUE
+        rowFetchPool?.shutdownNow(); rowFetchPool = null; pendingRows.clear()
         watchingRow = null; sentRow = null
         myListRow = null; continueRow = null; becauseRow = null; newRow = null; seriesRow = null
         becauseFor = null
@@ -516,28 +517,77 @@ class SeriesActivity : Activity() {
      * pool - twenty-odd sequential round trips left the lower rows empty for
      * far too long.
      */
+    /**
+     * Build the rows, but only fetch the ones anywhere near the screen.
+     *
+     * Movies asks for twenty-four rows and TV for twenty. Firing all of
+     * them on open meant five waves through the thread pool before the
+     * screen settled, for the sake of maybe four rows anyone could see.
+     * The rest are fetched as focus walks down towards them, a few ahead
+     * so a row is already filling by the time it is reached.
+     */
     private fun asyncRows(loadId: Int, specs: List<RowSpec>) {
         val slots = specs.map { addRow(it.title) }
-        Thread {
-            val pool = java.util.concurrent.Executors.newFixedThreadPool(5)
-            specs.forEachIndexed { i, spec ->
-                pool.execute {
-                    val items = try { spec.fetch() } catch (e: Exception) { emptyList() }
-                    if (items.isEmpty()) return@execute
+        pendingRows.clear()
+        specs.forEachIndexed { i, spec -> pendingRows[slots[i].view] = Pending(spec, slots[i], loadId) }
+        rowFetchPool?.shutdownNow()
+        rowFetchPool = java.util.concurrent.Executors.newFixedThreadPool(4)
+        // the opening screenful, plus a little in hand
+        fetchRowsUpTo(FIRST_ROWS - 1)
+    }
+
+    /** a row that exists on screen but has not been asked for yet */
+    private inner class Pending(val spec: RowSpec, val row: Row, val loadId: Int) {
+        var started = false
+    }
+
+    private val pendingRows = LinkedHashMap<View, Pending>()
+    private var rowFetchPool: java.util.concurrent.ExecutorService? = null
+
+    /** how many rows are fetched before anyone scrolls */
+    private val FIRST_ROWS = 5
+    /** how far ahead of the focused row to keep fetching */
+    private val ROW_LOOKAHEAD = 4
+
+    private fun fetchRowsUpTo(index: Int) {
+        val views = pendingRows.keys.toList()
+        for (i in 0..index.coerceAtMost(views.size - 1)) {
+            val p = pendingRows[views[i]] ?: continue
+            if (p.started) continue
+            p.started = true
+            val pool = rowFetchPool ?: continue
+            if (pool.isShutdown) continue
+            pool.execute {
+                val items = try { p.spec.fetch() } catch (e: Exception) { emptyList() }
+                if (items.isEmpty()) {
+                    // An empty row stays hidden, so focus can never land in
+                    // it to pull the next one in. Advance the frontier by
+                    // hand, or a bad first few rows would strand the rest.
                     runOnUiThread {
-                        if (isFinishing || loadId != sectionLoadId) return@runOnUiThread
-                        val live = items.toMutableList()
-                        val pager = spec.page?.let { Pager(slots[i], live, loadId, it) }
-                        slots[i].list.adapter =
-                            if (spec.tv) EnSeriesAdapter(live) { pager?.needMore() }
-                            else MovieAdapter(live) { pager?.needMore() }
-                        slots[i].view.visibility = View.VISIBLE
-                        if (i == 0) focusFirstItemSoon()
+                        if (!isFinishing && p.loadId == sectionLoadId) fetchRowsUpTo(i + 1)
                     }
+                    return@execute
+                }
+                runOnUiThread {
+                    if (isFinishing || p.loadId != sectionLoadId) return@runOnUiThread
+                    val live = items.toMutableList()
+                    val pager = p.spec.page?.let { Pager(p.row, live, p.loadId, it) }
+                    p.row.list.adapter =
+                        if (p.spec.tv) EnSeriesAdapter(live) { pager?.needMore() }
+                        else MovieAdapter(live) { pager?.needMore() }
+                    p.row.view.visibility = View.VISIBLE
+                    if (i == 0) focusFirstItemSoon()
                 }
             }
-            pool.shutdown()
-        }.start()
+        }
+    }
+
+    /** focus moved to this row: make sure the next few are on their way */
+    private fun ensureRowsAround(rowView: View) {
+        val views = pendingRows.keys.toList()
+        val idx = views.indexOf(rowView)
+        if (idx < 0) return
+        fetchRowsUpTo(idx + ROW_LOOKAHEAD)
     }
 
     /**
@@ -884,6 +934,7 @@ class SeriesActivity : Activity() {
             if (row != null) {
                 if (row === lastFocusedRow) return@addOnGlobalFocusChangeListener
                 lastFocusedRow = row
+                ensureRowsAround(row)
                 val idx = rowsContainer.indexOfChild(row)
                 val firstVisible = (0 until rowsContainer.childCount).firstOrNull { rowsContainer.getChildAt(it).visibility == View.VISIBLE }
                 if (idx == firstVisible) snapTo(0)

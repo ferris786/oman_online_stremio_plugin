@@ -48,11 +48,7 @@ object Diag {
         Thread(r, "diag").apply { isDaemon = true; priority = Thread.MIN_PRIORITY }
     }
     private val http by lazy {
-        OkHttpClient.Builder()
-            .connectTimeout(8, TimeUnit.SECONDS)
-            .writeTimeout(10, TimeUnit.SECONDS)
-            .readTimeout(10, TimeUnit.SECONDS)
-            .build()
+        Http.withTimeouts(8, 10, 10)
     }
     private val stamp = SimpleDateFormat("MM-dd HH:mm:ss.SSS", Locale.US)
 

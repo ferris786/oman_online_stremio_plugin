@@ -31,11 +31,7 @@ object Household {
     private const val KEY_HOUSE = "house_id"
     private const val KEY_OTHERS = "house_others"
 
-    private val http = OkHttpClient.Builder()
-        .connectTimeout(8, TimeUnit.SECONDS)
-        .readTimeout(10, TimeUnit.SECONDS)
-        .writeTimeout(10, TimeUnit.SECONDS)
-        .build()
+    private val http = Http.withTimeouts(8, 10, 10)
     private val JSON = "application/json".toMediaType()
 
     data class Sent(

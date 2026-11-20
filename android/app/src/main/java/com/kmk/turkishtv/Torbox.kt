@@ -23,10 +23,7 @@ import java.util.concurrent.TimeUnit
  */
 object Torbox {
 
-    private val http = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(20, TimeUnit.SECONDS)
-        .build()
+    private val http = Http.withTimeouts(15, 20, 15)
 
     private const val BASE = "https://api.torbox.app/v1/api"
     private const val CACHE_CHECK_BATCH = 100

@@ -24,6 +24,9 @@ class App : Application() {
         super.onCreate()
         // First thing up, so a crash during start-up is still recorded, and
         // anything left unsent from the last run gets posted.
+        // the shared connection pool and disk cache, before anything
+        // makes a request
+        Http.init(this)
         Diag.init(this)
         Coil.setImageLoader {
             ImageLoader.Builder(this)

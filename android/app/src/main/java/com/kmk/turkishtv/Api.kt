@@ -48,13 +48,17 @@ object Api {
 
     data class Stream(val name: String, val title: String, val url: String)
 
-    private val http = OkHttpClient.Builder()
-        .connectTimeout(Config.HTTP_TIMEOUT_MS, TimeUnit.MILLISECONDS)
-        .readTimeout(Config.HTTP_TIMEOUT_MS, TimeUnit.MILLISECONDS)
-        .build()
+    // shared pool and disk cache: see Http.kt. The server marks catalogues
+    // max-age=3600, so a second visit to Movies is served locally.
+    private val http: OkHttpClient
+        get() = Http.withTimeouts(
+            Config.HTTP_TIMEOUT_MS / 1000, Config.HTTP_TIMEOUT_MS / 1000)
 
     private fun get(path: String): String {
-        val request = okhttp3.Request.Builder().url(Config.BASE_URL + path).build()
+        val request = okhttp3.Request.Builder()
+            .url(Config.BASE_URL + path)
+            .cacheControl(Http.CACHEABLE)
+            .build()
         val resp = http.newCall(request).execute()
         resp.use {
             if (!resp.isSuccessful) throw RuntimeException("HTTP ${resp.code} for $path")
