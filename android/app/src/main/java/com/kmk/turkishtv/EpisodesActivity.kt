@@ -44,6 +44,10 @@ class EpisodesActivity : Activity() {
     private var targetIsResume = false
     private var historyByVideo: Map<String, WatchState.HistoryEntry> = emptyMap()
 
+    /** held LEFT/RIGHT paced by RowNav, and stopped at the end of the strip */
+    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean =
+        if (RowNav.handle(this, event)) true else super.dispatchKeyEvent(event)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_episodes)
@@ -62,7 +66,7 @@ class EpisodesActivity : Activity() {
         btnSeason = findViewById(R.id.btnSeason)
         rowHeader = findViewById(R.id.epRowHeader)
         list = findViewById(R.id.episodeList)
-        list.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
+        list.layoutManager = RowLayoutManager(this)
         list.itemAnimator = null
         adapter = EpisodeAdapter()
         list.adapter = adapter

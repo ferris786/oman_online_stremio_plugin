@@ -76,10 +76,15 @@ async function enCatalog(catalog, skip, genre, type = "movie") {
     const cached = catalogCache.get(key);
     if (cached) return cached;
 
+    // Genre and skip used to be mutually exclusive here, which meant a genre
+    // row could never show more than its first page. Cinemeta accepts both
+    // together, so they are combined.
     const base = `https://cinemeta-catalogs.strem.io/${catalog}/catalog/${type}/${catalog}`;
-    let url = `${base}.json`;
-    if (genre) url = `${base}/genre=${encodeURIComponent(genre)}.json`;
-    else if (skip) url = `${base}/skip=${parseInt(skip) || 0}.json`;
+    const parts = [];
+    if (genre) parts.push(`genre=${encodeURIComponent(genre)}`);
+    const n = parseInt(skip) || 0;
+    if (n > 0) parts.push(`skip=${n}`);
+    const url = parts.length ? `${base}/${parts.join("&")}.json` : `${base}.json`;
     const data = await fetchJson(url);
     // Cinemeta's catalogs are clean today, but a mislabelled entry would
     // otherwise sit in the wrong row with no playable source, so drop

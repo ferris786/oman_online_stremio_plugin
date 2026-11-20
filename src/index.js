@@ -358,6 +358,8 @@ app.get("/en/catalog/movie/latest", async (req, res) => {
 app.get("/en/catalog/movie/:catalog", enCatalogHandler);
 app.get("/en/catalog/movie/:catalog/genre/:genre", enCatalogHandler);
 app.get("/en/catalog/movie/:catalog/:skip", enCatalogHandler);
+// a genre row has to page too, or it stops dead after its first 50
+app.get("/en/catalog/movie/:catalog/genre/:genre/:skip", enCatalogHandler);
 
 // ---------------------------------------------------------------------------
 // English TV series: same Cinemeta catalogues, type=series. Episode ids are
@@ -378,6 +380,7 @@ const enSeriesCatalogHandler = async (req, res) => {
 app.get("/en/catalog/series/:catalog", enSeriesCatalogHandler);
 app.get("/en/catalog/series/:catalog/genre/:genre", enSeriesCatalogHandler);
 app.get("/en/catalog/series/:catalog/:skip", enSeriesCatalogHandler);
+app.get("/en/catalog/series/:catalog/genre/:genre/:skip", enSeriesCatalogHandler);
 
 app.get("/en/search/series/:query", async (req, res) => {
     try {

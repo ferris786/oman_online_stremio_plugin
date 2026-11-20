@@ -51,6 +51,11 @@ class SeriesActivity : Activity() {
     enum class Section(val label: String) {
         HOME("Home"), TURKISH("Turkish"), TV("TV"), MOVIES("Movies"), COLLECTIONS("Collections")
     }
+    /** how far from the end of a row the next page is asked for */
+    private val NEXT_PAGE_LEAD = 12
+    /** a row stops growing here; thirty rows of artwork already sit in memory */
+    private val MAX_ROW_ITEMS = 500
+
     /** sidebar widths in dp: icons only, and open with labels */
     private val RAIL_W_REST = 84
     private val RAIL_W_OPEN = 246
@@ -289,13 +294,19 @@ class SeriesActivity : Activity() {
             }
             Section.TV -> {
                 keptHost = rowsContainer.childCount
+                // every one of these pages: the row keeps growing as you
+                // run along it, until the catalogue itself is spent
                 asyncRows(id, listOf(
-                    RowSpec("Popular Series", tv = true) { Api.enSeriesCatalog("top", 0) },
-                    RowSpec("New Series", tv = true) { Api.enSeriesCatalog("year", 0) },
-                    RowSpec("Featured Series", tv = true) { Api.enSeriesCatalog("imdbRating", 0) }) +
+                    RowSpec("Popular Series", tv = true,
+                        page = { k -> Api.enSeriesCatalog("top", k) }) { Api.enSeriesCatalog("top", 0) },
+                    RowSpec("New Series", tv = true,
+                        page = { k -> Api.enSeriesCatalog("year", k) }) { Api.enSeriesCatalog("year", 0) },
+                    RowSpec("Featured Series", tv = true,
+                        page = { k -> Api.enSeriesCatalog("imdbRating", k) }) { Api.enSeriesCatalog("imdbRating", 0) }) +
                     listOf("Drama", "Comedy", "Crime", "Sci-Fi", "Thriller", "Mystery",
                            "Animation", "Documentary", "Action", "Fantasy", "Horror", "Family")
-                        .map { g -> RowSpec(g, tv = true) { Api.enSeriesCatalog("top", 0, g) } })
+                        .map { g -> RowSpec(g, tv = true,
+                            page = { k -> Api.enSeriesCatalog("top", k, g) }) { Api.enSeriesCatalog("top", 0, g) } })
             }
             Section.COLLECTIONS -> {
                 keptHost = rowsContainer.childCount
@@ -303,22 +314,77 @@ class SeriesActivity : Activity() {
             }
             Section.MOVIES -> {
                 keptHost = rowsContainer.childCount
+                // "Just added" is a dated snapshot and has a real end, so it
+                // is the one row here that does not page
                 asyncRows(id, listOf(
                     RowSpec("Just added") { Api.enLatestAdded() },
-                    RowSpec("New releases") { Api.enCatalog("year", 0) },
-                    RowSpec("Popular") { Api.enCatalog("top", 0) },
-                    RowSpec("Featured") { Api.enCatalog("imdbRating", 0) }) +
+                    RowSpec("New releases",
+                        page = { k -> Api.enCatalog("year", k) }) { Api.enCatalog("year", 0) },
+                    RowSpec("Popular",
+                        page = { k -> Api.enCatalog("top", k) }) { Api.enCatalog("top", 0) },
+                    RowSpec("Featured",
+                        page = { k -> Api.enCatalog("imdbRating", k) }) { Api.enCatalog("imdbRating", 0) }) +
                     listOf("Action", "Adventure", "Comedy", "Drama", "Sci-Fi", "Thriller",
                            "Horror", "Crime", "Mystery", "Romance", "Animation", "Family",
                            "Fantasy", "Documentary", "Biography", "History", "War", "Western",
                            "Music", "Sport")
-                        .map { g -> RowSpec(g) { Api.enCatalog("top", 0, g) } })
+                        .map { g -> RowSpec(g,
+                            page = { k -> Api.enCatalog("top", k, g) }) { Api.enCatalog("top", 0, g) } })
             }
         }
     }
 
     private inner class RowSpec(val title: String, val tv: Boolean = false,
+                                /** fetches the page starting at skip; null for a fixed row */
+                                val page: ((Int) -> List<Api.EnMovie>)? = null,
                                 val fetch: () -> List<Api.EnMovie>)
+
+    /**
+     * An endless row.
+     *
+     * Cinemeta hands back about fifty titles a page, so a row used to stop
+     * there. The next page is fetched while binding is still a screenful
+     * from the end, which means the row keeps flowing rather than halting
+     * while something loads.
+     *
+     * Pages can overlap, so new titles are de-duplicated by id. A page that
+     * adds nothing new means the catalogue is spent and the row is done
+     * growing, which is when it finally has a real end to stop at.
+     *
+     * The cap matters on this box: thirty rows of artwork already sit in
+     * memory, and an unbounded row would quietly undo that work.
+     */
+    private inner class Pager(
+        private val row: Row,
+        private val items: MutableList<Api.EnMovie>,
+        private val loadId: Int,
+        private val fetch: (Int) -> List<Api.EnMovie>
+    ) {
+        private var nextSkip = items.size
+        private var loading = false
+        private var exhausted = false
+
+        fun needMore() {
+            if (loading || exhausted || items.size >= MAX_ROW_ITEMS) return
+            loading = true
+            val skip = nextSkip
+            Thread {
+                val more = try { fetch(skip) } catch (e: Exception) { emptyList() }
+                runOnUiThread {
+                    loading = false
+                    if (isFinishing || loadId != sectionLoadId) return@runOnUiThread
+                    if (more.isEmpty()) { exhausted = true; return@runOnUiThread }
+                    val seen = items.mapTo(HashSet()) { it.id }
+                    val fresh = more.filter { seen.add(it.id) }
+                    nextSkip = skip + more.size
+                    if (fresh.isEmpty()) { exhausted = true; return@runOnUiThread }
+                    val start = items.size
+                    items.addAll(fresh)
+                    row.list.adapter?.notifyItemRangeInserted(start, fresh.size)
+                }
+            }.start()
+        }
+    }
 
     /**
      * Collections: the viewer's own named sets first, then anything kept
@@ -448,7 +514,11 @@ class SeriesActivity : Activity() {
                     if (items.isEmpty()) return@execute
                     runOnUiThread {
                         if (isFinishing || loadId != sectionLoadId) return@runOnUiThread
-                        slots[i].list.adapter = if (spec.tv) EnSeriesAdapter(items) else MovieAdapter(items)
+                        val live = items.toMutableList()
+                        val pager = spec.page?.let { Pager(slots[i], live, loadId, it) }
+                        slots[i].list.adapter =
+                            if (spec.tv) EnSeriesAdapter(live) { pager?.needMore() }
+                            else MovieAdapter(live) { pager?.needMore() }
                         slots[i].view.visibility = View.VISIBLE
                         if (i == 0) focusFirstItemSoon()
                     }
@@ -458,17 +528,33 @@ class SeriesActivity : Activity() {
         }.start()
     }
 
+    /**
+     * A held LEFT or RIGHT is paced by RowNav rather than by the remote's
+     * own repeat rate, and is swallowed at the end of a row so focus can
+     * never jump to the row above or below.
+     */
+    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean =
+        if (RowNav.handle(this, event)) true else super.dispatchKeyEvent(event)
+
     private fun focusFirstItemSoon() {
         rowsContainer.post { if (currentFocus == null || isInside(currentFocus, rowsContainer)) focusFirstItem() }
     }
 
     /**
-     * BACK on the home screen used to drop straight out to the TV launcher,
-     * which is easy to do by accident when walking back up from the player.
-     * Now it asks, and offers Settings as a way to stay in the app.
+     * BACK unwinds towards the way out, one step at a time.
+     *
+     *   anywhere in the rows or the billboard -> the sidebar
+     *   the sidebar, in a section             -> Home
+     *   the sidebar, on Home                  -> ask before leaving
+     *
+     * It used to be two states: a section went Home, and Home showed the
+     * exit prompt. So being forty posters deep in a row and pressing BACK
+     * asked whether you wanted to quit, which is not what BACK means.
      */
     override fun onBackPressed() {
-        if (section != Section.HOME) { goTo(Section.HOME); return }
+        val rail = findViewById<View>(R.id.rail)
+        if (!isInside(currentFocus, rail)) { focusRail(); return }
+        if (section != Section.HOME) { goTo(Section.HOME); focusRail(); return }
         AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog)
             .setTitle("Leave Wahab TV?")
             .setMessage("You are on the home screen. Exit the app, or stay here?")
@@ -780,6 +866,18 @@ class SeriesActivity : Activity() {
         }
     }
 
+    /** put focus on the sidebar entry for wherever we currently are */
+    private fun focusRail() {
+        val id = when (section) {
+            Section.HOME -> R.id.railHome
+            Section.TURKISH -> R.id.railTurkish
+            Section.TV -> R.id.railTv
+            Section.MOVIES -> R.id.railMovies
+            Section.COLLECTIONS -> R.id.railCollections
+        }
+        findViewById<View>(id)?.requestFocus()
+    }
+
     private fun rowOf(view: View): View? {
         var v: View? = view
         while (v != null) {
@@ -1087,7 +1185,8 @@ class SeriesActivity : Activity() {
         }
     }
 
-    private inner class EnSeriesAdapter(private val items: List<Api.EnMovie>) :
+    private inner class EnSeriesAdapter(private val items: List<Api.EnMovie>,
+                                        private val onNeedMore: (() -> Unit)? = null) :
         RecyclerView.Adapter<EnSeriesAdapter.VH>() {
         inner class VH(v: View) : RecyclerView.ViewHolder(v) {
             val poster: ImageView = v.findViewById(R.id.poster)
@@ -1098,6 +1197,7 @@ class SeriesActivity : Activity() {
         override fun getItemCount() = items.size
         override fun onBindViewHolder(holder: VH, position: Int) {
             val m = items[position]
+            if (position >= items.size - NEXT_PAGE_LEAD) onNeedMore?.invoke()
             Ui.loadImage(holder.poster, m.poster, 4f, R.drawable.placeholder_poster)
             Ui.showScore(holder.score, m.rating)
             holder.itemView.setOnFocusChangeListener { v, f ->
@@ -1278,7 +1378,8 @@ class SeriesActivity : Activity() {
         }
     }
 
-    private inner class MovieAdapter(private val items: List<Api.EnMovie>) :
+    private inner class MovieAdapter(private val items: List<Api.EnMovie>,
+                                     private val onNeedMore: (() -> Unit)? = null) :
         RecyclerView.Adapter<MovieAdapter.VH>() {
         inner class VH(v: View) : RecyclerView.ViewHolder(v) {
             val poster: ImageView = v.findViewById(R.id.poster)
@@ -1289,6 +1390,7 @@ class SeriesActivity : Activity() {
         override fun getItemCount() = items.size
         override fun onBindViewHolder(holder: VH, position: Int) {
             val m = items[position]
+            if (position >= items.size - NEXT_PAGE_LEAD) onNeedMore?.invoke()
             Ui.loadImage(holder.poster, m.poster, 4f, R.drawable.placeholder_poster)
             Ui.showScore(holder.score, m.rating)
             holder.itemView.setOnFocusChangeListener { v, f ->
