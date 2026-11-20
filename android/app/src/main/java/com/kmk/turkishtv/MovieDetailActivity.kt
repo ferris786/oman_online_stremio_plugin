@@ -55,21 +55,24 @@ class MovieDetailActivity : Activity() {
         sourcesBtn.setOnClickListener { findSources(pickBest = false) }
         playBtn.requestFocus()
 
-        val myListBtn = findViewById<TextView>(R.id.mMyList)
-        myListBtn.text = MyList.label(MyList.has(this, "movie", imdbId))
-        myListBtn.setOnClickListener {
+        // One save action: My List and every named list in a single tick-list.
+        // Two buttons doing nearly the same job is what kept named lists a
+        // secret, because nobody reads "Collection" as "my own list".
+        val saveBtn = findViewById<TextView>(R.id.mMyList)
+        saveBtn.text = SaveTo.label(this, "movie", imdbId)
+        saveBtn.setOnClickListener {
             val m = movie ?: return@setOnClickListener
-            val nowIn = MyList.toggle(this, MyList.Entry("movie", imdbId, m.name, m.poster, background,
-                meta?.optString("year") ?: m.year, meta?.optString("description")))
-            myListBtn.text = MyList.label(nowIn)
-            Toast.makeText(this, if (nowIn) "Added to My List" else "Removed from My List", Toast.LENGTH_SHORT).show()
+            val year = meta?.optString("year") ?: m.year
+            SaveTo.show(this, "movie", imdbId,
+                MyList.Entry("movie", imdbId, m.name, m.poster, background, year,
+                    meta?.optString("description")),
+                Collections.Item("movie", imdbId, m.name, m.poster, background, year)
+            ) { saveBtn.text = SaveTo.label(this, "movie", imdbId) }
         }
 
-        findViewById<TextView>(R.id.mCollection).setOnClickListener {
-            val m = movie ?: return@setOnClickListener
-            CollectionPicker.show(this, Collections.Item("movie", imdbId, m.name, m.poster, background,
-                meta?.optString("year") ?: m.year))
-        }
+        // the ◈ button is the franchise shortcut; it only appears once the
+        // film is known to belong to one, and does nothing before that
+        findViewById<TextView>(R.id.mCollection).visibility = View.GONE
 
         findViewById<TextView>(R.id.mReviews).setOnClickListener {
             status.text = "Loading reviews…"
@@ -139,6 +142,7 @@ class MovieDetailActivity : Activity() {
             if (col != null) runOnUiThread {
                 if (isFinishing) return@runOnUiThread
                 val btn = findViewById<TextView>(R.id.mCollection)
+                btn.visibility = View.VISIBLE   // hidden until a franchise is known
                 val short = col.second.removeSuffix(" Collection")
                 btn.text = "◈  " + (if (short.length > 20) short.take(19).trimEnd() + "…" else short)
                 btn.setOnClickListener {
@@ -148,8 +152,10 @@ class MovieDetailActivity : Activity() {
                 }
                 btn.setOnLongClickListener {
                     val m = movie ?: return@setOnLongClickListener true
-                    CollectionPicker.show(this, Collections.Item("movie", imdbId, m.name, m.poster,
-                        background, meta?.optString("year") ?: m.year))
+                    val year = meta?.optString("year") ?: m.year
+                    SaveTo.show(this, "movie", imdbId,
+                        MyList.Entry("movie", imdbId, m.name, m.poster, background, year),
+                        Collections.Item("movie", imdbId, m.name, m.poster, background, year))
                     true
                 }
             }

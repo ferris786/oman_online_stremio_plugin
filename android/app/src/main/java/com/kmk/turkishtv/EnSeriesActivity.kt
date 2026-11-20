@@ -92,25 +92,20 @@ class EnSeriesActivity : Activity() {
         btnResume.text = "▶  Play"
         btnResume.setOnClickListener { target?.let { play(it) } }
         btnSeason.setOnClickListener { showSeasonMenu() }
-        findViewById<TextView>(R.id.btnCollection).apply {
-            visibility = View.VISIBLE
-            setOnClickListener {
-                val m = meta
-                CollectionPicker.show(this@EnSeriesActivity, Collections.Item("enseries", imdbId,
-                    m?.name ?: seriesName, m?.poster ?: intent.getStringExtra("poster"),
-                    m?.background ?: intent.getStringExtra("background"), m?.year))
-            }
-        }
+        // one save action, same as every other title page
+        findViewById<TextView>(R.id.btnCollection).visibility = View.GONE
 
         btnMyList.visibility = View.VISIBLE
         paintMyList()
         btnMyList.setOnClickListener {
             val m = meta
-            val nowIn = MyList.toggle(this, MyList.Entry("enseries", imdbId, m?.name ?: seriesName,
-                m?.poster ?: intent.getStringExtra("poster"), m?.background ?: intent.getStringExtra("background"),
-                m?.year, m?.description))
-            paintMyList()
-            Toast.makeText(this, if (nowIn) "Added to My List" else "Removed from My List", Toast.LENGTH_SHORT).show()
+            val poster = m?.poster ?: intent.getStringExtra("poster")
+            val backdrop = m?.background ?: intent.getStringExtra("background")
+            val name = m?.name ?: seriesName
+            SaveTo.show(this, "enseries", imdbId,
+                MyList.Entry("enseries", imdbId, name, poster, backdrop, m?.year, m?.description),
+                Collections.Item("enseries", imdbId, name, poster, backdrop, m?.year)
+            ) { paintMyList() }
         }
 
         Thread {
@@ -148,7 +143,7 @@ class EnSeriesActivity : Activity() {
     }
 
     private fun paintMyList() {
-        btnMyList.text = MyList.label(MyList.has(this, "enseries", imdbId))
+        btnMyList.text = SaveTo.label(this, "enseries", imdbId)
     }
 
     private fun refreshHistory() {

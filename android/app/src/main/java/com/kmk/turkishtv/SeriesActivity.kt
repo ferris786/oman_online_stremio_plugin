@@ -49,7 +49,7 @@ class SeriesActivity : Activity() {
      * the other three are whole libraries.
      */
     enum class Section(val label: String) {
-        HOME("Home"), TURKISH("Turkish"), TV("TV"), MOVIES("Movies"), COLLECTIONS("Collections")
+        HOME("Home"), TURKISH("Turkish"), TV("TV"), MOVIES("Movies"), COLLECTIONS("My Lists")
     }
     /** how far from the end of a row the next page is asked for */
     private val NEXT_PAGE_LEAD = 12
@@ -392,6 +392,14 @@ class SeriesActivity : Activity() {
      * is the same shape as everything else in the app.
      */
     private fun buildCollections(loadId: Int) {
+        // --- yours first, because they are the reason to open this tab ---
+        addSectionLabel("Your lists")
+
+        val myList = MyList.all(this)
+        val mineRow = addRow("My List   ·   ${myList.size}")
+        mineRow.list.adapter = MyListAdapter(myList)
+        mineRow.view.visibility = if (myList.isEmpty()) View.GONE else View.VISIBLE
+
         val mine = Collections.all(this)
         for (c in mine) {
             val row = addRow(c.name + "   ·   ${c.items.size}")
@@ -399,13 +407,14 @@ class SeriesActivity : Activity() {
             row.view.visibility = if (c.items.isEmpty()) View.GONE else View.VISIBLE
             row.header.setOnClickListener { manageCollection(c.name) }
         }
-        if (mine.isEmpty()) {
-            val row = addRow("Your collections")
+        if (mine.isEmpty() && myList.isEmpty()) {
+            val row = addRow("")
             row.view.visibility = View.VISIBLE
-            row.header.text = "Your collections   ·   none yet. Open any film and press ＋ Collection."
+            row.header.text = "Nothing saved yet. Open any film or series and press ＋ Save to…"
         }
 
-        // kept Reel lists
+        // --- then anything kept from The Reel ---
+        if (KeptLists.all(this).isNotEmpty()) addSectionLabel("Kept from The Reel")
         for ((listId, title) in KeptLists.all(this)) {
             val row = addRow(title)
             row.header.setOnClickListener {
@@ -421,11 +430,14 @@ class SeriesActivity : Activity() {
             }.start()
         }
 
-        // franchises, from the server
+        // --- franchises last: a browse feature, not something you made ---
+        val fLabel = addSectionLabel("Film franchises")
+        fLabel.view.visibility = View.GONE
         Thread {
             val cat = try { Api.collectionCatalogue() } catch (e: Exception) { emptyList() }
             runOnUiThread {
                 if (isFinishing || loadId != sectionLoadId) return@runOnUiThread
+                if (cat.isNotEmpty()) fLabel.view.visibility = View.VISIBLE
                 val slots = cat.map { addRow(it.title) }
                 Thread {
                     val pool = java.util.concurrent.Executors.newFixedThreadPool(4)
@@ -614,6 +626,23 @@ class SeriesActivity : Activity() {
     }
 
     // ------------------------------------------------------------ rows
+
+    /**
+     * A header with no row under it, used to label a group.
+     *
+     * The Collections tab was a flat pile of three unrelated things with
+     * nothing saying which was which: your own lists, lists kept from The
+     * Reel, and thirty-four film franchises, all just rows with names.
+     */
+    private fun addSectionLabel(text: String): Row {
+        val r = addRow(text.uppercase())
+        r.list.visibility = View.GONE
+        r.header.setTextColor(resources.getColor(R.color.accent))
+        r.header.textSize = 12f
+        r.header.letterSpacing = 0.22f
+        r.view.visibility = View.VISIBLE
+        return r
+    }
 
     private fun addRow(title: String, at: Int = -1): Row {
         val v = layoutInflater.inflate(R.layout.row_section, rowsContainer, false)

@@ -397,7 +397,7 @@
                 android:duplicateParentState="true"
                 android:paddingEnd="14dp"
                 android:singleLine="true"
-                android:text="Collections"
+                android:text="My Lists"
                 android:textColor="@color/rail_icon_text"
                 android:textSize="15sp"
                 android:textStyle="bold"

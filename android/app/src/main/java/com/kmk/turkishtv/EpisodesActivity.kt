@@ -80,23 +80,19 @@ class EpisodesActivity : Activity() {
         btnResume.setOnClickListener { target?.let { play(it) } }
         btnSeason.setOnClickListener { showSeasonMenu() }
 
-        findViewById<TextView>(R.id.btnCollection).apply {
-            visibility = View.VISIBLE
-            setOnClickListener {
-                CollectionPicker.show(this@EpisodesActivity, Collections.Item("series", seriesId,
-                    seriesName, seriesPoster, seriesBackdrop, meta?.year))
-            }
-        }
+        // one save action, same as every other title page
+        findViewById<TextView>(R.id.btnCollection).visibility = View.GONE
 
-        val myListBtn = findViewById<TextView>(R.id.btnMyList)
-        myListBtn.visibility = View.VISIBLE
-        myListBtn.text = MyList.label(MyList.has(this, "series", seriesId))
-        myListBtn.setOnClickListener {
+        val saveBtn = findViewById<TextView>(R.id.btnMyList)
+        saveBtn.visibility = View.VISIBLE
+        saveBtn.text = SaveTo.label(this, "series", seriesId)
+        saveBtn.setOnClickListener {
             val m = meta
-            val nowIn = MyList.toggle(this, MyList.Entry("series", seriesId, seriesName,
-                seriesPoster, seriesBackdrop, m?.year, m?.description))
-            myListBtn.text = MyList.label(nowIn)
-            Toast.makeText(this, if (nowIn) "Added to My List" else "Removed from My List", Toast.LENGTH_SHORT).show()
+            SaveTo.show(this, "series", seriesId,
+                MyList.Entry("series", seriesId, seriesName, seriesPoster, seriesBackdrop,
+                    m?.year, m?.description),
+                Collections.Item("series", seriesId, seriesName, seriesPoster, seriesBackdrop, m?.year)
+            ) { saveBtn.text = SaveTo.label(this, "series", seriesId) }
         }
 
         Thread {

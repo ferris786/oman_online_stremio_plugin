@@ -187,7 +187,7 @@
                 android:paddingStart="16dp" android:paddingEnd="16dp"
                 android:paddingTop="9dp" android:paddingBottom="9dp"
                 android:singleLine="true"
-                android:text="＋  My List"
+                android:text="＋  Save to…"
                 android:textColor="@color/btn_primary_text"
                 android:textSize="14sp"
                 android:textStyle="bold" />
@@ -258,7 +258,7 @@
                 android:paddingStart="16dp" android:paddingEnd="16dp"
                 android:paddingTop="9dp" android:paddingBottom="9dp"
                 android:singleLine="true"
-                android:text="◈  Collection"
+                android:text="◈  Franchise"
                 android:textColor="@color/btn_primary_text"
                 android:textSize="14sp"
                 android:textStyle="bold"
