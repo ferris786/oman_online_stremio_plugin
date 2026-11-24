@@ -462,7 +462,13 @@ object Torbox {
             if (fileIdx >= 0 && file.optLong("id", -1L) == fileIdx.toLong()) score += 300
             val norm = { x: String -> x.replace(Regex("[^a-z0-9]"), "") }
             val fn = norm(fname); val rn = norm(releaseName)
-            if (rn.length > 8 && fn.length > 8 && (fn.contains(rn.substring(0, 12)) || rn.contains(fn.substring(0, 12)))) score += 20
+            // Compare a prefix of the two normalised names. The guard used to
+            // require more than 8 characters and then take 12, so any name of
+            // 9, 10 or 11 threw StringIndexOutOfBoundsException and killed the
+            // resolver thread outright — caught twice in the device logs on
+            // 19 Nov ("length=10; index=12").
+            val probe = minOf(12, fn.length, rn.length)
+            if (probe > 8 && (fn.contains(rn.substring(0, probe)) || rn.contains(fn.substring(0, probe)))) score += 20
             val candidate = Pick(file.optLong("id", 0), size, score)
             val better = best == null ||
                 candidate.score > best!!.score ||

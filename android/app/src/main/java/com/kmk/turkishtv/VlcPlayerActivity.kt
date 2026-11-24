@@ -42,6 +42,8 @@ class VlcPlayerActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // see PlayerActivity: the manifest attribute does nothing on <activity>
+        window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         setContentView(R.layout.activity_vlc_player)
 
         videoId = intent.getStringExtra("videoId") ?: run { finish(); return }

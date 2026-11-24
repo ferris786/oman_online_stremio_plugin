@@ -98,6 +98,9 @@ class PlayerActivity : Activity() {
     private var lastTickPlaying = false
     private var offeredRoomFor = ""           // so the invite is offered once
 
+    /** set when onStop paused playback, so onStart knows to resume it */
+    private var pausedByBackground = false
+
     // diagnostics state
     private var decoderName = "-"
     private var stalls = 0
@@ -137,6 +140,16 @@ class PlayerActivity : Activity() {
         super.onCreate(savedInstanceState)
         // Classic / Terminal / Ottoman - chosen in Settings. Every skin's
         // layout exposes the same ids, so nothing below changes.
+        // Keep the screen awake for real.
+        //
+        // The manifest carried android:keepScreenOn="true" on the <activity>
+        // tag, which is a VIEW attribute and means nothing there, so the
+        // television's screensaver was free to take over mid-episode. When it
+        // did, the app went to the background and onStop paused playback.
+        // That is the self-pausing: logged twice in one Supernatural episode,
+        // each time as onStop with finishing=false while still playing.
+        window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+
         skin = PlayerSkin.load(this)
         setContentView(skin.layout)
 
@@ -1484,6 +1497,17 @@ class PlayerActivity : Activity() {
 
     override fun onStart() {
         super.onStart()
+        // Whatever took the foreground has gone. If the pause was ours
+        // rather than a deliberate one, carry on where we left off instead
+        // of leaving a frozen picture nobody asked for.
+        if (pausedByBackground) {
+            pausedByBackground = false
+            if (!ended && playbackStarted) {
+                player.play()
+                Diag.log("life", "resumed after background", mapOf(
+                    "posS" to player.currentPosition / 1000))
+            }
+        }
         playerView.postDelayed(saveRunnable, 10_000)
         playerView.postDelayed(tick, 1000)
         if (Household.linked(this)) {
@@ -1516,6 +1540,8 @@ class PlayerActivity : Activity() {
         // stop claiming to be watching the moment we are not
         if (Household.linked(this)) Thread { Household.beatStopped(this) }.start()
         if (togetherMode) Thread { Household.roomClose(this) }.start()
+        // remember that the pause was ours, not the viewer's
+        pausedByBackground = player.isPlaying
         player.pause()
         super.onStop()
     }

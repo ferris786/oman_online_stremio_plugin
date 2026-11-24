@@ -62,7 +62,6 @@
         <activity
             android:name=".VlcPlayerActivity"
             android:exported="false"
-            android:keepScreenOn="true"
             android:screenOrientation="landscape" />
 
         <activity
@@ -110,7 +109,6 @@
         <activity
             android:name=".PlayerActivity"
             android:exported="false"
-            android:keepScreenOn="true"
             android:screenOrientation="landscape" />
     </application>
 </manifest>
