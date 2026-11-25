@@ -56,6 +56,8 @@ class PlayerActivity : Activity() {
         const val BUFFER_PANEL_DELAY_MS = 900L
         /** auto-fallback stops after this many failures; the user picks from the source list */
         const val MAX_AUTO_FALLBACK = 5
+        /** how many unasked-for pauses to undo in a minute before standing down */
+        const val MAX_PAUSE_UNDOS = 4
     }
 
     private lateinit var player: ExoPlayer
@@ -100,6 +102,24 @@ class PlayerActivity : Activity() {
 
     /** set when onStop paused playback, so onStart knows to resume it */
     private var pausedByBackground = false
+
+    /**
+     * What the viewer actually asked for.
+     *
+     * True from the moment a stream starts until they deliberately pause.
+     * Anything that clears playWhenReady while this is still true was not
+     * them, and is put back. That is the guard against causes we have not
+     * met yet, rather than against the one we just fixed.
+     */
+    private var wantPlaying = true
+
+    /** the system's idea of what is playing: remote keys, and a second
+     *  signal to the TV that it should not drop into a screensaver */
+    private var mediaSession: android.media.session.MediaSession? = null
+
+    /** undo attempts in the last minute, so a stubborn cause cannot loop */
+    private var undoCount = 0
+    private var undoWindowAt = 0L
 
     // diagnostics state
     private var decoderName = "-"
@@ -178,6 +198,7 @@ class PlayerActivity : Activity() {
 
         player = buildPlayer()
         playerView.player = player
+        startMediaSession()
         setupOverlayVisibility()
         applyTitles()
         nextCard.setOnClickListener { playNext() }
@@ -307,6 +328,52 @@ class PlayerActivity : Activity() {
         }
     }
 
+    /**
+     * A platform media session.
+     *
+     * Two jobs. It makes the remote's play, pause and stop keys work
+     * without the on-screen controller, and it tells Android something is
+     * playing — which is an independent reason for the television not to
+     * start its screensaver, alongside the window flag. Belt and braces on
+     * the bug that caused the self-pausing.
+     */
+    private fun startMediaSession() {
+        runCatching {
+            mediaSession = android.media.session.MediaSession(this, "WahabTV").apply {
+                setCallback(object : android.media.session.MediaSession.Callback() {
+                    override fun onPlay() { wantPlaying = true; player.play() }
+                    override fun onPause() { wantPlaying = false; player.pause() }
+                    override fun onStop() { wantPlaying = false; finish() }
+                    override fun onSeekTo(pos: Long) { player.seekTo(pos) }
+                })
+                isActive = true
+            }
+        }
+    }
+
+    /** keep the system in step with what the player is doing */
+    private fun publishPlaybackState() {
+        val session = mediaSession ?: return
+        runCatching {
+            val state = when {
+                player.playbackState == Player.STATE_BUFFERING ->
+                    android.media.session.PlaybackState.STATE_BUFFERING
+                player.isPlaying -> android.media.session.PlaybackState.STATE_PLAYING
+                else -> android.media.session.PlaybackState.STATE_PAUSED
+            }
+            session.setPlaybackState(
+                android.media.session.PlaybackState.Builder()
+                    .setActions(
+                        android.media.session.PlaybackState.ACTION_PLAY or
+                        android.media.session.PlaybackState.ACTION_PAUSE or
+                        android.media.session.PlaybackState.ACTION_PLAY_PAUSE or
+                        android.media.session.PlaybackState.ACTION_STOP or
+                        android.media.session.PlaybackState.ACTION_SEEK_TO)
+                    .setState(state, player.currentPosition.coerceAtLeast(0), 1f)
+                    .build())
+        }
+    }
+
     private fun buildPlayer(): ExoPlayer {
         // Generous buffers for flaky streaming CDNs: keep 30s minimum / 2 min
         // maximum buffered, start after 3s (5s after a stall).
@@ -352,7 +419,67 @@ class PlayerActivity : Activity() {
                     }
                 })
                 p.addListener(object : Player.Listener {
+                    /**
+                     * Every pause now says who asked for it.
+                     *
+                     * The self-pausing took weeks to pin down because a
+                     * pause left no trace of its cause. Media3 hands us a
+                     * reason, so it goes in the log; and when the reason is
+                     * not the viewer, the pause is simply undone.
+                     */
+                    override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                        val why = when (reason) {
+                            Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST -> "user"
+                            Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS -> "audio focus lost"
+                            Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_BECOMING_NOISY -> "audio became noisy"
+                            Player.PLAY_WHEN_READY_CHANGE_REASON_REMOTE -> "remote"
+                            Player.PLAY_WHEN_READY_CHANGE_REASON_END_OF_MEDIA_ITEM -> "end of item"
+                            else -> "reason $reason"
+                        }
+                        Diag.log("play", if (playWhenReady) "play ($why)" else "pause ($why)",
+                            mapOf("posS" to player.currentPosition / 1000,
+                                  "wantPlaying" to wantPlaying))
+                        publishPlaybackState()
+                        if (playWhenReady) return
+
+                        // Not the viewer, not us going to the background,
+                        // and not the end of the episode: put it back.
+                        val theirs = reason == Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST ||
+                            reason == Player.PLAY_WHEN_READY_CHANGE_REASON_END_OF_MEDIA_ITEM
+                        if (!theirs && wantPlaying && !ended && !pausedByBackground) {
+                            // Something that keeps pausing us would otherwise
+                            // be fought forever. Try a few times, then leave
+                            // it alone and say so rather than spin.
+                            val now = System.currentTimeMillis()
+                            if (now - undoWindowAt > 60_000) { undoWindowAt = now; undoCount = 0 }
+                            undoCount++
+                            if (undoCount > MAX_PAUSE_UNDOS) {
+                                Diag.error("play", "giving up undoing pauses", mapOf(
+                                    "why" to why, "inLastMinute" to undoCount,
+                                    "posS" to player.currentPosition / 1000))
+                                return
+                            }
+                            Diag.warn("play", "undoing a pause nobody asked for",
+                                mapOf("why" to why, "attempt" to undoCount,
+                                      "posS" to player.currentPosition / 1000))
+                            playerView.post { if (!isFinishing && wantPlaying) player.play() }
+                        }
+                    }
+
+                    /**
+                     * Suppression pauses the picture without clearing
+                     * playWhenReady, so it would never show up above.
+                     */
+                    override fun onPlaybackSuppressionReasonChanged(reason: Int) {
+                        if (reason != Player.PLAYBACK_SUPPRESSION_REASON_NONE) {
+                            Diag.warn("play", "playback suppressed", mapOf(
+                                "reason" to reason, "posS" to player.currentPosition / 1000))
+                        }
+                        publishPlaybackState()
+                    }
+
                     override fun onPlaybackStateChanged(state: Int) {
+                        publishPlaybackState()
                         Diag.log("play", "state=" + stateName(state), mapOf(
                             "posS" to player.currentPosition / 1000,
                             "durS" to player.duration / 1000,
@@ -676,6 +803,7 @@ class PlayerActivity : Activity() {
             if (s.cached) resolveLazy(s, -1L) else resolveUncached(s)
             return
         }
+        wantPlaying = true
         Diag.log("play", "starting", mapOf(
             "video" to videoId,
             "source" to s.name,
@@ -1446,6 +1574,13 @@ class PlayerActivity : Activity() {
                 return true
             }
         }
+        // OK on the controller toggles play/pause; record that as intent so
+        // the watchdog does not fight the viewer
+        if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER) {
+            if (nextCard.visibility != View.VISIBLE && pendingRoomInvite == null && playbackStarted) {
+                playerView.postDelayed({ if (!isFinishing) wantPlaying = player.playWhenReady }, 120)
+            }
+        }
         if (nextCard.visibility == View.VISIBLE) {
             when (keyCode) {
                 KeyEvent.KEYCODE_BACK -> { nextCancelled = true; hideNextCard(); return true }
@@ -1473,6 +1608,14 @@ class PlayerActivity : Activity() {
                 if (togetherMode) leaveTogether(closeRoom = true) else startTogether(announce = true)
                 true
             }
+            // the viewer deliberately pausing is the one pause we keep
+            KeyEvent.KEYCODE_MEDIA_PAUSE -> { wantPlaying = false; player.pause(); true }
+            KeyEvent.KEYCODE_MEDIA_PLAY -> { wantPlaying = true; player.play(); true }
+            KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_MEDIA_STOP -> {
+                wantPlaying = !player.isPlaying
+                if (wantPlaying) player.play() else player.pause()
+                true
+            }
             KeyEvent.KEYCODE_CHANNEL_UP -> { cycleSource(1); true }
             KeyEvent.KEYCODE_CHANNEL_DOWN -> { cycleSource(-1); true }
             KeyEvent.KEYCODE_MENU -> { showSourceBrowser(); true }
@@ -1497,12 +1640,14 @@ class PlayerActivity : Activity() {
 
     override fun onStart() {
         super.onStart()
+        runCatching { mediaSession?.isActive = true }
         // Whatever took the foreground has gone. If the pause was ours
         // rather than a deliberate one, carry on where we left off instead
         // of leaving a frozen picture nobody asked for.
         if (pausedByBackground) {
             pausedByBackground = false
             if (!ended) {
+                wantPlaying = true
                 player.play()
                 Diag.log("life", "resumed after background", mapOf(
                     "posS" to player.currentPosition / 1000))
@@ -1548,10 +1693,13 @@ class PlayerActivity : Activity() {
         // and then refuse to resume.
         pausedByBackground = player.playWhenReady
         player.pause()
+        runCatching { mediaSession?.isActive = false }
         super.onStop()
     }
 
     override fun onDestroy() {
+        runCatching { mediaSession?.isActive = false; mediaSession?.release() }
+        mediaSession = null
         Diag.log("life", "onDestroy", mapOf(
             "posS" to player.currentPosition / 1000, "finishing" to isFinishing))
         Diag.flushSoon()
