@@ -545,8 +545,19 @@ object Api {
         return Pair(j.optString("status"), if (j.has("key")) j.optString("key") else null)
     }
 
+    /**
+     * A third-party source indexer, fetched straight from the TV.
+     *
+     * Deliberately far less patient than our own server. Some of these
+     * hosts are blocked or throttled by domestic ISPs, and a blocked host
+     * does not refuse the connection — it hangs. At the twenty-second
+     * timeout the rest of the app waited on it; at seven it is barely felt,
+     * and MuxEngine's deadline catches whatever is left.
+     */
+    private val providerHttp by lazy { Http.withTimeouts(5, 7, 7) }
+
     private fun rawGet(url: String): String {
-        http.newCall(okhttp3.Request.Builder().url(url).build()).execute().use { resp ->
+        providerHttp.newCall(okhttp3.Request.Builder().url(url).build()).execute().use { resp ->
             return resp.body?.string() ?: "[]"
         }
     }

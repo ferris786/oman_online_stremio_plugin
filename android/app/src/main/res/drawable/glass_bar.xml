@@ -1,11 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The controller's own pane: square to the screen edges at the bottom,
-     rounded only on top, with a bright hairline where it meets the picture. -->
+<!-- The controller's pane.
+     A DARK translucent material, not a white frosting: white over a bright
+     frame left the text unreadable on a real television. Android hex is
+     AARRGGBB, so these are 86% and 68% opaque near-black — the picture
+     still shows through, but white type always has something to sit on. -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item>
         <shape android:shape="rectangle">
-            <solid android:color="#26ffffff" />
-            <corners android:topLeftRadius="22dp" android:topRightRadius="22dp" />
+            <gradient
+                android:angle="90"
+                android:startColor="#db070709"
+                android:endColor="#ad0d0d12" />
+            <corners android:radius="20dp" />
         </shape>
     </item>
     <item android:gravity="top" android:height="1dp">

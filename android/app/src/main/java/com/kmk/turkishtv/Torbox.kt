@@ -112,8 +112,19 @@ object Torbox {
      * ?hash= keys, NOT comma-joined. Response format=list gives a plain
      * array of hashes; format=object gives objects - we parse both.
      */
-    fun cachedHashes(key: String, hashes: List<String>): Set<String> {
-        if (hashes.isEmpty()) return emptySet()
+    /**
+     * The answer, and whether it can be trusted.
+     *
+     * These are not the same thing, and conflating them is what emptied the
+     * source list for popular films. A failed batch used to count silently
+     * as "not cached", so if TorBox was rate-limiting or slow, every source
+     * looked uncached and the filter threw them all away. A viewer with
+     * fifty available sources was told there were none.
+     */
+    data class CacheCheck(val cached: Set<String>, val reliable: Boolean)
+
+    fun cachedHashes(key: String, hashes: List<String>): CacheCheck {
+        if (hashes.isEmpty()) return CacheCheck(emptySet(), true)
         // AIOStreams-style: instant-playable = cached on TorBox OR already in
         // the user's account (library). Both checked in parallel.
         //
@@ -124,6 +135,8 @@ object Torbox {
         // in batches of 100 (~4.6 KB each), in parallel.
         var cached: Set<String> = emptySet()
         var library: Set<String> = emptySet()
+        // any batch that throws makes the whole answer untrustworthy
+        val failures = java.util.concurrent.atomic.AtomicInteger(0)
         val t1 = Thread {
             val out = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
             val batches = hashes.map { it.lowercase() }.distinct().chunked(CACHE_CHECK_BATCH)
@@ -133,7 +146,11 @@ object Torbox {
                         val sb = StringBuilder("$BASE/torrents/checkcached?format=list")
                         for (h in batch) sb.append("&hash=").append(h)
                         out.addAll(parseHashSet(call(sb.toString(), key)))
-                    } catch (e: Exception) { /* this batch counts as uncached */ }
+                    } catch (e: Exception) {
+                        // record it: silently treating this as "uncached" is
+                        // what hid whole libraries of working sources
+                        failures.incrementAndGet()
+                    }
                 }
             }
             workers.forEach { it.start() }
@@ -149,10 +166,18 @@ object Torbox {
                     if (h.isNotBlank() && isFinished(t)) out.add(h.lowercase())
                 }
                 out
-            } catch (e: Exception) { emptySet() }
+            } catch (e: Exception) { failures.incrementAndGet(); emptySet() }
         }
         t1.start(); t2.start(); t1.join(); t2.join()
-        return cached + library
+        // rate limiting makes every answer suspect, not just a failed batch
+        val reliable = failures.get() == 0 && rateLimitSecondsLeft() <= 0
+        if (!reliable) {
+            Diag.warn("torbox", "cache check unreliable", mapOf(
+                "failedBatches" to failures.get(),
+                "rateLimitedFor" to rateLimitSecondsLeft(),
+                "hashes" to hashes.size))
+        }
+        return CacheCheck(cached + library, reliable)
     }
 
     private fun parseHashSet(j: JSONObject): Set<String> {
