@@ -402,7 +402,7 @@ class SeriesActivity : Activity() {
      */
     private fun buildCollections(loadId: Int) {
         // --- yours first, because they are the reason to open this tab ---
-        addSectionLabel("Your lists")
+        addSectionLabel("Your lists   ·   hold OK on a title to remove it or manage the list")
 
         val myList = MyList.all(this)
         val mineRow = addRow("My List   ·   ${myList.size}")
@@ -412,7 +412,7 @@ class SeriesActivity : Activity() {
         val mine = Collections.all(this)
         for (c in mine) {
             val row = addRow(c.name + "   ·   ${c.items.size}")
-            row.list.adapter = CollectionAdapter(c.items)
+            row.list.adapter = CollectionAdapter(c.items, c.name)
             row.view.visibility = if (c.items.isEmpty()) View.GONE else View.VISIBLE
             row.header.setOnClickListener { manageCollection(c.name) }
         }
@@ -468,26 +468,90 @@ class SeriesActivity : Activity() {
         focusFirstItemSoon()
     }
 
-    private fun manageCollection(name: String) {
-        AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog)
+    /**
+     * Managing a list.
+     *
+     * This used to hang off a click on the row's header, and the header
+     * has no focusable attribute — so with a remote there was no way to
+     * reach it at all and a list could never be deleted. It is reached by
+     * holding OK on any title in the list now, which is the gesture
+     * Continue Watching and the sent-to-you row already use.
+     *
+     * @param item the title that was held, when there was one
+     */
+    private fun manageCollection(name: String, item: Collections.Item? = null) {
+        val options = ArrayList<String>()
+        if (item != null) options.add("Remove \"${item.name.take(28)}\" from this list")
+        options.add("Rename this list")
+        options.add("Empty this list")
+        options.add("Delete this list")
+
+        AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
             .setTitle(name)
-            .setItems(arrayOf("Delete this collection")) { _, _ ->
-                AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog)
-                    .setTitle("Delete \"$name\"?")
-                    .setMessage("The collection is removed. Nothing you watched is affected.")
-                    .setPositiveButton("Delete") { _, _ ->
-                        Collections.delete(this, name)
+            .setItems(options.toTypedArray()) { _, which ->
+                when (options[which]) {
+                    "Remove \"${item?.name?.take(28)}\" from this list" -> {
+                        Collections.toggle(this, name, item!!)
+                        Toast.makeText(this, "Removed from $name", Toast.LENGTH_SHORT).show()
                         buildSection()
                     }
-                    .setNegativeButton("Keep", null)
-                    .show()
+                    "Rename this list" -> renameCollection(name)
+                    "Empty this list" -> confirmCollection(
+                        "Empty \"$name\"?",
+                        "Every title is taken out. The list itself stays.") {
+                        for (i in Collections.all(this).firstOrNull { it.name == name }?.items.orEmpty()) {
+                            Collections.toggle(this, name, i)
+                        }
+                    }
+                    "Delete this list" -> confirmCollection(
+                        "Delete \"$name\"?",
+                        "The list is removed. Nothing you watched is affected.") {
+                        Collections.delete(this, name)
+                    }
+                }
             }
             .setNegativeButton("Close", null)
             .show()
     }
 
+    private fun confirmCollection(title: String, message: String, act: () -> Unit) {
+        AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle(title)
+            .setMessage(message)
+            .setPositiveButton("Yes") { _, _ -> act(); buildSection() }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun renameCollection(name: String) {
+        val input = android.widget.EditText(this).apply {
+            setText(name)
+            setSelection(name.length)
+            setSingleLine()
+            val pad = Ui.dp(this@SeriesActivity, 16)
+            setPadding(pad, pad, pad, pad)
+        }
+        AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle("Rename list")
+            .setView(input)
+            .setPositiveButton("Save") { _, _ ->
+                val to = input.text.toString().trim()
+                if (to.isEmpty() || to == name) return@setPositiveButton
+                // create the new one, move everything across, drop the old
+                val items = Collections.all(this).firstOrNull { it.name == name }?.items.orEmpty()
+                Collections.create(this, to)
+                for (i in items.reversed()) Collections.toggle(this, to, i)
+                Collections.delete(this, name)
+                buildSection()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+        input.requestFocus()
+    }
+
     /** items in a hand-built collection; each opens the right page for its kind */
-    private inner class CollectionAdapter(private val items: List<Collections.Item>) :
+    private inner class CollectionAdapter(private val items: List<Collections.Item>,
+                                          private val listName: String? = null) :
         RecyclerView.Adapter<CollectionAdapter.VH>() {
         inner class VH(v: View) : RecyclerView.ViewHolder(v) {
             val poster: ImageView = v.findViewById(R.id.poster)
@@ -516,6 +580,12 @@ class SeriesActivity : Activity() {
                     "enseries" -> openEnSeries(asMovie)
                     else -> openSeries(seriesById[e.id] ?: Api.Series(e.id, e.name, e.poster, null, e.background))
                 }
+            }
+            // the only way to reach list management with a remote: the row
+            // header this used to hang off was never focusable
+            holder.itemView.setOnLongClickListener {
+                listName?.let { manageCollection(it, e) }
+                listName != null
             }
         }
     }
@@ -1462,6 +1532,20 @@ class SeriesActivity : Activity() {
                     "enseries" -> openEnSeries(asMovie)
                     else -> openSeries(seriesById[e.id] ?: Api.Series(e.id, e.name, e.poster, e.description, e.background))
                 }
+            }
+            // same gesture as every other removable row in the app
+            holder.itemView.setOnLongClickListener {
+                AlertDialog.Builder(this@SeriesActivity, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                    .setTitle("Remove \"${e.name}\" from My List?")
+                    .setMessage("It stays in any other list it is in, and nothing you watched changes.")
+                    .setPositiveButton("Remove") { _, _ ->
+                        MyList.toggle(this@SeriesActivity,
+                            MyList.Entry(e.kind, e.id, e.name, e.poster, e.background, e.year, e.description))
+                        buildSection()
+                    }
+                    .setNegativeButton("Keep", null)
+                    .show()
+                true
             }
         }
     }

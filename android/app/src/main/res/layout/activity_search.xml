@@ -1,18 +1,32 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Search, rebuilt for a remote control.
+
+     The old screen was a single text field and one undifferentiated grid
+     of everything. Three things were wrong with it: typing went through
+     the system keyboard, which is slow and covers the screen; results
+     mixed Turkish series, films, shows and actors into one wall of
+     posters with no way to tell them apart; and there was nothing at all
+     on screen before you typed.
+
+     So: an on-screen keyboard on the left, which is what every TV app
+     does because D-pad across a fixed grid beats the system IME, and
+     results on the right grouped into the same labelled rows the rest of
+     the app uses. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/bg"
-    android:orientation="vertical"
-    android:paddingStart="48dp"
-    android:paddingEnd="40dp"
-    android:paddingTop="24dp">
+    android:orientation="horizontal">
 
+    <!-- ============ the keyboard column ============ -->
     <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center_vertical">
+        android:layout_width="372dp"
+        android:layout_height="match_parent"
+        android:background="@drawable/scrim_left"
+        android:orientation="vertical"
+        android:paddingStart="34dp"
+        android:paddingEnd="22dp"
+        android:paddingTop="26dp">
 
         <TextView
             android:layout_width="wrap_content"
@@ -20,72 +34,81 @@
             android:fontFamily="@font/cinzel_bold"
             android:text="Search"
             android:textColor="@color/title_cream"
-            android:textSize="24sp"
-            android:layout_marginEnd="22dp" />
+            android:textSize="24sp" />
 
-        <EditText
+        <!-- what has been typed so far; not an EditText, because the
+             on-screen keys write into it and the system IME is never wanted -->
+        <TextView
             android:id="@+id/searchInput"
-            android:layout_width="0dp"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
+            android:layout_marginTop="14dp"
             android:background="@drawable/row_item_bg"
-            android:hint="Series or movie title…"
-            android:textColor="@color/row_item_text"
-            android:textColorHint="@color/row_item_text_dim"
-            android:textSize="17sp"
-            android:paddingStart="16dp" android:paddingEnd="16dp"
-            android:paddingTop="12dp" android:paddingBottom="12dp"
-            android:imeOptions="actionSearch"
-            android:inputType="text"
-            android:maxLines="1" />
+            android:hint="Title, show or actor"
+            android:singleLine="true"
+            android:ellipsize="start"
+            android:textColor="@color/text"
+            android:textColorHint="@color/text_dim"
+            android:textSize="18sp"
+            android:paddingStart="14dp" android:paddingEnd="14dp"
+            android:paddingTop="11dp" android:paddingBottom="11dp" />
 
         <TextView
             android:id="@+id/voiceBtn"
-            android:layout_width="wrap_content"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginStart="12dp"
+            android:layout_marginTop="10dp"
             android:background="@drawable/btn_primary"
             android:focusable="true"
             android:clickable="true"
-            android:paddingStart="20dp" android:paddingEnd="20dp"
+            android:gravity="center"
             android:paddingTop="11dp" android:paddingBottom="11dp"
-            android:text="🎤  Speak"
+            android:text="🎤  Speak instead"
             android:textColor="@color/btn_primary_text"
-            android:textSize="15sp"
+            android:textSize="14sp"
             android:textStyle="bold" />
 
-        <TextView
-            android:id="@+id/searchBtn"
+        <!-- the keys themselves are added in code, so the grid can be
+             re-flowed without editing a layout -->
+        <LinearLayout
+            android:id="@+id/keyboard"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginStart="10dp"
-            android:background="@drawable/btn_primary"
-            android:focusable="true"
-            android:clickable="true"
-            android:paddingStart="20dp" android:paddingEnd="20dp"
-            android:paddingTop="11dp" android:paddingBottom="11dp"
-            android:text="⌕  Search"
-            android:textColor="@color/btn_primary_text"
-            android:textSize="15sp"
-            android:textStyle="bold" />
+            android:layout_marginTop="16dp"
+            android:orientation="vertical" />
     </LinearLayout>
 
-    <TextView
-        android:id="@+id/searchStatus"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="14dp"
-        android:textColor="@color/text_dim"
-        android:textSize="12sp"
-        android:textStyle="bold" />
-
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/searchGrid"
+    <!-- ============ results ============ -->
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:layout_marginTop="6dp"
-        android:clipToPadding="false"
-        android:clipChildren="false"
-        android:paddingBottom="16dp"
-        android:descendantFocusability="afterDescendants" />
+        android:orientation="vertical"
+        android:paddingTop="26dp">
+
+        <TextView
+            android:id="@+id/searchStatus"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="26dp"
+            android:textColor="@color/text_dim"
+            android:textSize="13sp"
+            android:textStyle="bold" />
+
+        <ScrollView
+            android:id="@+id/resultsScroll"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:layout_marginTop="4dp"
+            android:clipToPadding="false"
+            android:paddingBottom="30dp"
+            android:overScrollMode="never"
+            android:scrollbars="none">
+
+            <LinearLayout
+                android:id="@+id/resultsRows"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
+        </ScrollView>
+    </LinearLayout>
 </LinearLayout>
