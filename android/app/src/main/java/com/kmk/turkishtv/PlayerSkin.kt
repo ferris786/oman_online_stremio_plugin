@@ -32,7 +32,19 @@ enum class PlayerSkin(
 
     OTTOMAN("ottoman", "Ottoman", R.layout.activity_player_ottoman,
         R.drawable.ott_panel, R.color.accent, R.color.title_cream, R.color.text_dim,
-        R.font.cinzel_medium, true);
+        R.font.cinzel_medium, true),
+
+    /**
+     * Frosted chrome over the picture, in the manner everything on the web
+     * has been borrowing from Apple through 2026. The blur is real on
+     * Android 12 and above; below that the panels stay translucent but flat.
+     *
+     * No display face and no uppercase here on purpose: the look leans on
+     * the material and the spacing rather than on the lettering.
+     */
+    GLASS("glass", "Liquid Glass", R.layout.activity_player_glass,
+        R.drawable.glass_panel, R.color.glass_accent, R.color.glass_text,
+        R.color.glass_dim, null, false);
 
     companion object {
         private const val PREFS = "settings"

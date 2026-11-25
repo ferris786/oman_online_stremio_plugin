@@ -258,7 +258,8 @@ class SettingsActivity : Activity() {
         val skinBtns = mapOf(
             PlayerSkin.CLASSIC to findViewById<Button>(R.id.skinClassic),
             PlayerSkin.TERMINAL to findViewById<Button>(R.id.skinTerminal),
-            PlayerSkin.OTTOMAN to findViewById<Button>(R.id.skinOttoman)
+            PlayerSkin.OTTOMAN to findViewById<Button>(R.id.skinOttoman),
+            PlayerSkin.GLASS to findViewById<Button>(R.id.skinGlass)
         )
         fun paintSkins() {
             val cur = PlayerSkin.load(this)

@@ -172,6 +172,7 @@ class PlayerActivity : Activity() {
 
         skin = PlayerSkin.load(this)
         setContentView(skin.layout)
+        applyGlass()
 
         playerView = findViewById(R.id.playerView)
         sourceLabel = findViewById(R.id.sourceLabel)
@@ -187,6 +188,9 @@ class PlayerActivity : Activity() {
         seekIndicator = findViewById(R.id.seekIndicator)
         ctlTitle = playerView.findViewById(R.id.ctlTitle)
         ctlSub = playerView.findViewById(R.id.ctlSub)
+        // the controller is inflated by PlayerView, so its pane is frosted
+        // here rather than in applyGlass()
+        frostController()
         // D-pad scrubbing on the time bar defaults to duration/20 per press
         // (~7 min on a 2 h episode). Fix it at 10 s.
         playerView.findViewById<androidx.media3.ui.DefaultTimeBar>(androidx.media3.ui.R.id.exo_progress)
@@ -337,6 +341,48 @@ class PlayerActivity : Activity() {
      * start its screensaver, alongside the window flag. Belt and braces on
      * the bug that caused the self-pausing.
      */
+    /**
+     * Frost the chrome, on the skin that asks for it.
+     *
+     * RenderEffect blurs what is drawn BEHIND a view, which is exactly the
+     * effect wanted here: the controller and the panels pick up a blurred
+     * copy of the picture rather than a dark scrim. It needs Android 12, so
+     * on anything older the panels keep the flat translucent tint from
+     * their drawables, which still reads as glass, just without the blur.
+     *
+     * The video surface itself is never touched. Blurring the content as
+     * well as the chrome is the usual way this look goes wrong.
+     */
+    private fun applyGlass() {
+        if (skin != PlayerSkin.GLASS) return
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.S) return
+        runCatching {
+            val frost = { v: View?, radius: Float ->
+                v?.setRenderEffect(
+                    android.graphics.RenderEffect.createBlurEffect(
+                        radius, radius, android.graphics.Shader.TileMode.CLAMP))
+            }
+            // the panels, never the PlayerView
+            frost(findViewById(R.id.sourceLabel), 18f)
+            frost(findViewById(R.id.sourceChips), 18f)
+            frost(findViewById(R.id.bufferPanel), 22f)
+            frost(findViewById(R.id.diagPanel), 22f)
+            frost(findViewById(R.id.nextCard), 22f)
+            frost(findViewById(R.id.seekIndicator), 22f)
+        }
+    }
+
+    /** the controller is inflated by PlayerView, so it is frosted later */
+    private fun frostController() {
+        if (skin != PlayerSkin.GLASS) return
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.S) return
+        runCatching {
+            playerView.findViewById<View>(R.id.glassBar)?.setRenderEffect(
+                android.graphics.RenderEffect.createBlurEffect(
+                    26f, 26f, android.graphics.Shader.TileMode.CLAMP))
+        }
+    }
+
     private fun startMediaSession() {
         runCatching {
             mediaSession = android.media.session.MediaSession(this, "WahabTV").apply {

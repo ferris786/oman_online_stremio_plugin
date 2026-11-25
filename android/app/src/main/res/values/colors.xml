@@ -23,6 +23,17 @@
     <color name="term_grey">#aaaaaa</color>
     <color name="term_white">#ffffff</color>
 
+    <!-- Liquid Glass skin. Light type on a frosted pane, so the colours are
+         opacities over the picture rather than solid tones. The accent is a
+         cool white rather than a hue: anything saturated fights the artwork
+         showing through the glass. -->
+    <color name="glass_text">#ffffff</color>
+    <color name="glass_soft">#c7ffffff</color>
+    <color name="glass_dim">#8cffffff</color>
+    <color name="glass_accent">#eaf4ff</color>
+    <color name="glass_tint">#24ffffff</color>
+    <color name="glass_edge">#4dffffff</color>
+
     <!-- Ottoman skin -->
     <color name="ott_ink">#120d08</color>
     <color name="ott_crimson">#6a1f2b</color>

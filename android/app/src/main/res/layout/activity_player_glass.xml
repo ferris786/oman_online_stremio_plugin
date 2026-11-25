@@ -1,0 +1,196 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- LIQUID GLASS skin.
+     Built from the classic layout so it carries exactly the same ids:
+     playerView, sourceLabel, sourceChips, nextCard/nextThumb/nextTitle/nextHint,
+     bufferPanel/bufferBar/bufferText, diagPanel/diagText.
+
+     The frosting is real: PlayerActivity.applyGlass() hangs a RenderEffect
+     blur on these panels on Android 12 and above. Below that they fall back
+     to the flat translucent tint defined in the drawables, which still reads
+     correctly, just without the blur.
+
+     The rule the look depends on: glass belongs on the CHROME, never on the
+     picture. Panels frost; the video never does. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#000000">
+
+    <androidx.media3.ui.PlayerView
+        android:id="@+id/playerView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        app:controller_layout_id="@layout/player_controls_glass"
+        app:show_timeout="5000"
+        app:use_controller="true" />
+
+    <TextView
+        android:id="@+id/sourceLabel"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|start"
+        android:layout_marginTop="22dp"
+        android:layout_marginStart="40dp"
+        android:background="@drawable/glass_pill"
+        android:paddingStart="14dp" android:paddingEnd="14dp"
+        android:paddingTop="6dp" android:paddingBottom="6dp"
+        android:textColor="@color/glass_text"
+        android:textSize="12sp"
+        android:textStyle="bold"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/sourceChips"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|end"
+        android:layout_marginTop="22dp"
+        android:layout_marginEnd="40dp"
+        android:background="@drawable/glass_pill"
+        android:focusable="true"
+        android:clickable="true"
+        android:paddingStart="14dp" android:paddingEnd="14dp"
+        android:paddingTop="6dp" android:paddingBottom="6dp"
+        android:text="◧  sources"
+        android:textColor="@color/glass_accent"
+        android:textSize="12sp"
+        android:textStyle="bold"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/seekIndicator"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:background="@drawable/glass_panel"
+        android:paddingStart="22dp" android:paddingEnd="22dp"
+        android:paddingTop="12dp" android:paddingBottom="12dp"
+        android:textColor="@color/glass_text"
+        android:textSize="26sp"
+        android:textStyle="bold"
+        android:visibility="gone" />
+
+    <!-- Buffering -->
+    <LinearLayout
+        android:id="@+id/bufferPanel"
+        android:layout_width="300dp"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:background="@drawable/glass_panel"
+        android:orientation="vertical"
+        android:padding="18dp"
+        android:visibility="gone">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Buffering"
+            android:textColor="@color/glass_accent"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:letterSpacing="0.1" />
+
+        <ProgressBar
+            android:id="@+id/bufferBar"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="match_parent"
+            android:layout_height="5dp"
+            android:layout_marginTop="10dp"
+            android:max="100"
+            android:progressDrawable="@drawable/progress_glass" />
+
+        <TextView
+            android:id="@+id/bufferText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:textColor="@color/glass_dim"
+            android:textSize="11sp" />
+    </LinearLayout>
+
+    <!-- Stream diagnostics -->
+    <TextView
+        android:id="@+id/diagPanel"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|end"
+        android:layout_marginTop="66dp"
+        android:layout_marginEnd="40dp"
+        android:background="@drawable/glass_panel"
+        android:fontFamily="monospace"
+        android:padding="14dp"
+        android:textColor="@color/glass_text"
+        android:textSize="11sp"
+        android:lineSpacingExtra="2dp"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/diagText"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:visibility="gone" />
+
+    <!-- Next episode -->
+    <LinearLayout
+        android:id="@+id/nextCard"
+        android:layout_width="300dp"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|end"
+        android:layout_marginEnd="40dp"
+        android:layout_marginBottom="118dp"
+        android:background="@drawable/glass_panel"
+        android:focusable="true"
+        android:clickable="true"
+        android:foreground="@drawable/focus_ring"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:padding="10dp"
+        android:visibility="gone">
+
+        <ImageView
+            android:id="@+id/nextThumb"
+            android:layout_width="104dp"
+            android:layout_height="58dp"
+            android:scaleType="centerCrop"
+            android:contentDescription="@string/app_name" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="10dp"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="NEXT EPISODE"
+                android:textColor="@color/glass_dim"
+                android:textSize="10sp"
+                android:textStyle="bold"
+                android:letterSpacing="0.1" />
+
+            <TextView
+                android:id="@+id/nextTitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:textColor="@color/glass_text"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:maxLines="1"
+                android:ellipsize="end" />
+
+            <TextView
+                android:id="@+id/nextHint"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="▶ OK plays now · BACK cancels"
+                android:textColor="@color/glass_accent"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+    </LinearLayout>
+</FrameLayout>

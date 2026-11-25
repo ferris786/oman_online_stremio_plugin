@@ -132,6 +132,14 @@ class SeriesActivity : Activity() {
         shownProfile = Profiles.activeId(this)
         Diag.log("home", "opened", mapOf("profile" to Profiles.activeName(this)))
 
+        // Something new worth knowing about, once, with a way to turn it on
+        // right here. It waits for the rows so it does not land on a blank
+        // screen, and stands aside for the profile questions below.
+        if (Announce.pending(this) && Profiles.named(this) &&
+            !(Profiles.multiple(this) && !ProfilesActivity.askedThisLaunch)) {
+            rowsContainer.postDelayed({ if (!isFinishing) Announce.maybeShow(this) }, 2500)
+        }
+
         // There is no sign-in, so the app asks once who is watching on this
         // TV. The answer is what the other TV in the household sees on its
         // "watching now" and "sent by" rows, so it is worth asking properly

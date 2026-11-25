@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- LIQUID GLASS controller.
+
+     The controls sit on a frosted pane rather than a dark scrim, so the
+     picture carries on behind them instead of being blacked out. Ids
+     prefixed exo_ are bound by PlayerControlView; ctlTitle, ctlSub and
+     ctlHints are ours and must keep those names.
+
+     Two things the look lives or dies on, both from Apple's own guidance:
+     the glass goes on the chrome and never on the content, and selection
+     is never conveyed by a tint alone, because translucency can be turned
+     down or sit over a bright frame. Hence white type at full strength and
+     a hairline edge on every pane. -->
+<merge xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <!-- a far gentler scrim than the other skins: the pane does the work -->
+    <View android:id="@id/exo_controls_background"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:background="#3d000000" />
+
+    <LinearLayout
+        android:id="@+id/glassBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:layout_marginStart="26dp"
+        android:layout_marginEnd="26dp"
+        android:layout_marginBottom="26dp"
+        android:background="@drawable/glass_bar"
+        android:orientation="vertical"
+        android:paddingStart="34dp"
+        android:paddingEnd="34dp"
+        android:paddingTop="22dp"
+        android:paddingBottom="20dp"
+        android:layoutDirection="ltr">
+
+        <TextView
+            android:id="@+id/ctlTitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="@color/glass_text"
+            android:textSize="22sp"
+            android:letterSpacing="-0.01"
+            android:shadowColor="#80000000"
+            android:shadowRadius="10" />
+
+        <TextView
+            android:id="@+id/ctlSub"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="3dp"
+            android:textColor="@color/glass_soft"
+            android:textSize="13sp"
+            android:shadowColor="#80000000"
+            android:shadowRadius="10" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView android:id="@id/exo_position"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/glass_text"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:includeFontPadding="false" />
+
+            <androidx.media3.ui.DefaultTimeBar android:id="@id/exo_progress"
+                android:focusable="false"
+                android:layout_width="0dp"
+                android:layout_height="26dp"
+                android:layout_weight="1"
+                android:layout_marginStart="14dp"
+                android:layout_marginEnd="14dp"
+                app:bar_height="4dp"
+                app:played_color="@color/glass_text"
+                app:scrubber_color="@color/glass_text"
+                app:buffered_color="#8cffffff"
+                app:unplayed_color="#40ffffff"
+                app:scrubber_enabled_size="13dp"
+                app:scrubber_dragged_size="17dp" />
+
+            <TextView android:id="@id/exo_duration"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/glass_text"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:includeFontPadding="false" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/ctlHints"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:text="OK  pause   ·   ◀ ▶  seek 10 s   ·   ▲  sources   ·   ▼  tracks   ·   0  diagnostics"
+            android:textColor="@color/glass_dim"
+            android:textSize="11sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <ImageButton android:id="@id/exo_play_pause"
+        style="@style/ExoStyledControls.Button.Center.PlayPause"
+        android:layout_gravity="center" />
+</merge>
