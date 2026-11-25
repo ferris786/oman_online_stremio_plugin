@@ -1502,7 +1502,7 @@ class PlayerActivity : Activity() {
         // of leaving a frozen picture nobody asked for.
         if (pausedByBackground) {
             pausedByBackground = false
-            if (!ended && playbackStarted) {
+            if (!ended) {
                 player.play()
                 Diag.log("life", "resumed after background", mapOf(
                     "posS" to player.currentPosition / 1000))
@@ -1540,8 +1540,13 @@ class PlayerActivity : Activity() {
         // stop claiming to be watching the moment we are not
         if (Household.linked(this)) Thread { Household.beatStopped(this) }.start()
         if (togetherMode) Thread { Household.roomClose(this) }.start()
-        // remember that the pause was ours, not the viewer's
-        pausedByBackground = player.isPlaying
+        // Remember that the pause was ours, not the viewer's.
+        //
+        // playWhenReady, not isPlaying: isPlaying is false while buffering,
+        // and going to the background often coincides with a stall, so
+        // reading the state rather than the intent would pause mid-buffer
+        // and then refuse to resume.
+        pausedByBackground = player.playWhenReady
         player.pause()
         super.onStop()
     }
