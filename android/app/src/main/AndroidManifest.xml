@@ -101,6 +101,27 @@
             android:windowSoftInputMode="adjustResize"
             android:screenOrientation="landscape" />
 
+        <!-- Wahab TV as the TV's screensaver. Android offers the slot to
+             any app that declares this; the viewer still has to pick it
+             once in the TV's own settings. -->
+        <service
+            android:name=".AmbientService"
+            android:exported="true"
+            android:permission="android.permission.BIND_DREAM_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.dreams.DreamService" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.dream"
+                android:resource="@xml/ambient" />
+        </service>
+
+        <activity
+            android:name=".EpisodeGridActivity"
+            android:exported="false"
+            android:screenOrientation="landscape" />
+
         <activity
             android:name=".ProfilesActivity"
             android:exported="false"

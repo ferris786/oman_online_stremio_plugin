@@ -3,7 +3,6 @@ package com.kmk.turkishtv
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.Intent
-import android.widget.Toast
 
 /**
  * Telling the viewer something new exists.
@@ -25,7 +24,7 @@ object Announce {
      * Bump this when there is something new to say, and update the text
      * below. An id that has already been seen never shows again.
      */
-    private const val CURRENT = "glass"
+    private const val CURRENT = "v71"
 
     fun pending(activity: Activity): Boolean =
         Profiles.devicePrefs(activity).getString(KEY, "") != CURRENT
@@ -41,23 +40,21 @@ object Announce {
         markSeen(activity)   // seen once, whatever they choose
 
         AlertDialog.Builder(activity, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-            .setTitle("New player look: Liquid Glass")
+            .setTitle("Five new things")
             .setMessage(
-                "The controls now come on a frosted pane, so the picture " +
-                "carries on behind them instead of going dark.\n\n" +
-                "It sits alongside Classic, Terminal and Ottoman. You can " +
-                "switch whenever you like in Settings, under Player skin.")
-            .setPositiveButton("Use it now") { _, _ ->
-                PlayerSkin.save(activity, PlayerSkin.GLASS)
-                Toast.makeText(activity,
-                    "Liquid Glass is on. It shows the next time you play something.",
-                    Toast.LENGTH_LONG).show()
-                Diag.log("announce", "glass enabled from the notice")
-            }
-            .setNeutralButton("Show me Settings") { _, _ ->
+                "Tonight — the first row now suggests what to watch, with a " +
+                "reason for each pick.\n\n" +
+                "All episodes — on a series page, see every episode at once " +
+                "instead of scrolling a strip. Kurulus Osman has 194.\n\n" +
+                "Colour — the home screen now takes its tint from whatever " +
+                "artwork is showing.\n\n" +
+                "Pages open rather than cut, and Wahab TV can be your TV's " +
+                "screensaver: pick it in your TV's own Settings, under " +
+                "Display, Screensaver.")
+            .setPositiveButton("Have a look", null)
+            .setNeutralButton("Open Settings") { _, _ ->
                 activity.startActivity(Intent(activity, SettingsActivity::class.java))
             }
-            .setNegativeButton("Keep Classic", null)
             .show()
     }
 }

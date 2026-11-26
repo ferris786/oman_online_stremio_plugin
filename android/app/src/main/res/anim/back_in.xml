@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Coming back: the screen underneath settles forward again. -->
+<set xmlns:android="http://schemas.android.com/apk/res/android">
+    <alpha android:fromAlpha="0.0" android:toAlpha="1.0" android:duration="200"
+        android:interpolator="@android:interpolator/decelerate_quad" />
+    <scale android:fromXScale="1.03" android:toXScale="1.0"
+        android:fromYScale="1.03" android:toYScale="1.0"
+        android:pivotX="50%p" android:pivotY="50%p"
+        android:duration="240" android:interpolator="@android:interpolator/decelerate_quad" />
+</set>

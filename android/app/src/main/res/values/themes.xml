@@ -4,5 +4,16 @@
         <item name="android:windowBackground">@color/bg</item>
         <item name="android:colorBackground">@color/bg</item>
         <item name="android:colorAccent">@color/accent</item>
+        <!-- Pages grow in rather than cutting. On a television the cut
+             between a poster and its page is the thing that makes an app
+             feel cheap; a short scale-and-fade reads as the card opening. -->
+        <item name="android:windowAnimationStyle">@style/PageAnimation</item>
+    </style>
+
+    <style name="PageAnimation" parent="@android:style/Animation.Activity">
+        <item name="android:activityOpenEnterAnimation">@anim/fade_in</item>
+        <item name="android:activityOpenExitAnimation">@anim/fade_out</item>
+        <item name="android:activityCloseEnterAnimation">@anim/back_in</item>
+        <item name="android:activityCloseExitAnimation">@anim/back_out</item>
     </style>
 </resources>

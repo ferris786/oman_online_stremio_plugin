@@ -79,6 +79,15 @@ class EpisodesActivity : Activity() {
 
         btnResume.setOnClickListener { target?.let { play(it) } }
         btnSeason.setOnClickListener { showSeasonMenu() }
+        // the whole series at once, for the 150-plus episode ones where the
+        // strip is simply the wrong shape
+        findViewById<TextView>(R.id.btnAllEpisodes).setOnClickListener {
+            startActivity(Intent(this, EpisodeGridActivity::class.java).apply {
+                putExtras(intent)
+                putExtra("seriesId", seriesId)
+                putExtra("seriesName", seriesName)
+            })
+        }
 
         // one save action, same as every other title page
         findViewById<TextView>(R.id.btnCollection).visibility = View.GONE

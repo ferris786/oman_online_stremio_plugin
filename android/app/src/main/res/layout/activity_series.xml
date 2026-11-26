@@ -13,6 +13,12 @@
         android:scaleType="centerCrop"
         android:contentDescription="@string/app_name" />
 
+    <!-- colour taken from whatever artwork is showing; see Hue.kt -->
+    <View
+        android:id="@+id/hueWash"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
     <View android:layout_width="match_parent" android:layout_height="match_parent" android:background="@drawable/scrim_left" />
     <View android:layout_width="match_parent" android:layout_height="match_parent" android:background="@drawable/scrim_bottom" />
 

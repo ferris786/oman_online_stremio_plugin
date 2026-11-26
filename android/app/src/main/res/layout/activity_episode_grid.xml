@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Every episode at once.
+     The episode strip shows four or five of Kurulus Osman's 194 at a time,
+     so reaching episode 147 is a long hold even with the season jump. This
+     grid shows about fifty, keeps the season breaks visible, and has a
+     number pad for going straight to one. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/bg_deep"
+    android:orientation="vertical"
+    android:paddingStart="48dp"
+    android:paddingEnd="40dp"
+    android:paddingTop="24dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <TextView
+            android:id="@+id/gridTitle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:fontFamily="@font/cinzel_bold"
+            android:singleLine="true"
+            android:ellipsize="end"
+            android:textColor="@color/title_cream"
+            android:textSize="24sp" />
+
+        <TextView
+            android:id="@+id/gridJump"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:background="@drawable/btn_primary"
+            android:focusable="true"
+            android:clickable="true"
+            android:paddingStart="18dp" android:paddingEnd="18dp"
+            android:paddingTop="10dp" android:paddingBottom="10dp"
+            android:text="⌖  Jump to episode"
+            android:textColor="@color/btn_primary_text"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/gridSub"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:textColor="@color/text_dim"
+        android:textSize="13sp"
+        android:textStyle="bold" />
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/gridList"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_marginTop="12dp"
+        android:clipToPadding="false"
+        android:paddingBottom="24dp"
+        android:overScrollMode="never"
+        android:scrollbars="none" />
+</LinearLayout>

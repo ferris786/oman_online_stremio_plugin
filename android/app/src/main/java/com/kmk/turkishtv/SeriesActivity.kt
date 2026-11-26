@@ -28,6 +28,7 @@ import androidx.recyclerview.widget.RecyclerView
 class SeriesActivity : Activity() {
 
     private lateinit var backdrop: ImageView
+    private var hueWash: View? = null
     private lateinit var billboard: View
     private lateinit var bbChip: TextView
     private lateinit var bbLogo: ImageView
@@ -66,6 +67,7 @@ class SeriesActivity : Activity() {
     /** which profile the rows on screen belong to, so a switch rebuilds them */
     private var shownProfile: String? = null
 
+    private var tonightRow: Row? = null
     private var watchingRow: Row? = null
     private var sentRow: Row? = null
     private var myListRow: Row? = null
@@ -99,6 +101,7 @@ class SeriesActivity : Activity() {
         setContentView(R.layout.activity_series)
 
         backdrop = findViewById(R.id.backdrop)
+        hueWash = findViewById(R.id.hueWash)
         billboard = findViewById(R.id.billboard)
         bbChip = findViewById(R.id.bbChip)
         bbLogo = findViewById(R.id.bbLogo)
@@ -252,15 +255,18 @@ class SeriesActivity : Activity() {
         lastFocusedRow = null
         lastSnapY = Int.MIN_VALUE
         rowFetchPool?.shutdownNow(); rowFetchPool = null; pendingRows.clear()
-        watchingRow = null; sentRow = null
+        tonightRow = null; watchingRow = null; sentRow = null
         myListRow = null; continueRow = null; becauseRow = null; newRow = null; seriesRow = null
         becauseFor = null
         snapTo(0)
 
         when (section) {
             Section.HOME -> {
-                // the household rows go first: one is time-sensitive, the
-                // other is somebody asking you to watch something
+                // Tonight leads, because it is the only row that answers the
+                // question rather than asking the viewer to browse
+                tonightRow = addRow("Tonight")
+                // the household rows next: one is time-sensitive, the other
+                // is somebody asking you to watch something
                 watchingRow = addRow("Watching now")
                 sentRow = addRow("Sent to you")
                 myListRow = addRow("My List")
@@ -269,7 +275,7 @@ class SeriesActivity : Activity() {
                 newRow = addRow("New this week")
                 keptHost = rowsContainer.childCount
                 fillMyListRow(); fillContinueRow(); fillBecauseRow(); fillNewRow()
-                fillHouseRows()
+                fillHouseRows(); fillTonightRow(id)
                 // a taster from each library, so Home is still a place to browse
                 seriesRow = addRow("Turkish Series")
                 seriesRow?.let {
@@ -919,6 +925,82 @@ class SeriesActivity : Activity() {
     }
 
     /**
+     * Tonight: a handful of picks with a reason attached to each.
+     *
+     * Built off the main thread because one of the picks asks TMDB what
+     * resembles the last film finished; the rest come from data already
+     * in memory, so a failed lookup costs one pick rather than the row.
+     */
+    private fun fillTonightRow(loadId: Int) {
+        val row = tonightRow ?: return
+        Thread {
+            val picks = try { Tonight.pick(this, catalog) } catch (e: Exception) { emptyList() }
+            runOnUiThread {
+                if (isFinishing || loadId != sectionLoadId || tonightRow !== row) return@runOnUiThread
+                if (picks.isEmpty()) { row.view.visibility = View.GONE; return@runOnUiThread }
+                row.list.adapter = TonightAdapter(picks)
+                row.view.visibility = View.VISIBLE
+            }
+        }.start()
+    }
+
+    /** a pick is a wide card: artwork, the title, and why it is here */
+    private inner class TonightAdapter(private val items: List<Tonight.Pick>) :
+        RecyclerView.Adapter<TonightAdapter.VH>() {
+        inner class VH(v: View) : RecyclerView.ViewHolder(v) {
+            val still: ImageView = v.findViewById(R.id.still)
+            val label: TextView = v.findViewById(R.id.label)
+            val sub: TextView = v.findViewById(R.id.sub)
+            val progress: ProgressBar = v.findViewById(R.id.progress)
+            val score: TextView = v.findViewById(R.id.score)
+        }
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) =
+            VH(layoutInflater.inflate(R.layout.item_still, parent, false))
+        override fun getItemCount() = items.size
+        override fun onBindViewHolder(holder: VH, position: Int) {
+            val p = items[position]
+            Ui.loadImage(holder.still, p.image ?: p.poster, 4f)
+            holder.label.text = p.name
+            holder.sub.text = p.reason
+            Ui.showScore(holder.score, null)
+            val pct = p.history?.progressPct ?: 0
+            holder.progress.progress = pct
+            holder.progress.visibility = if (pct > 0) View.VISIBLE else View.INVISIBLE
+            Ui.focusLift(holder.itemView)
+            holder.itemView.setOnClickListener { openPick(p) }
+        }
+    }
+
+    /** send a pick to whichever screen it belongs to */
+    private fun openPick(p: Tonight.Pick) {
+        p.history?.let { h ->
+            when {
+                h.isMovie -> openMovieFromHistory(h, autoplay = true)
+                h.isEnSeries -> openEnSeriesFromHistory(h, resume = true)
+                else -> openSeries(seriesById[h.seriesId]
+                    ?: Api.Series(h.seriesId, h.seriesName, h.poster, null, h.backdrop))
+            }
+            return
+        }
+        p.suggestion?.let { sg ->
+            Toast.makeText(this, "Opening ${sg.name}…", Toast.LENGTH_SHORT).show()
+            Thread {
+                val imdbId = try { Api.resolveSuggestion(sg.tmdbId) } catch (e: Exception) { null }
+                runOnUiThread {
+                    if (isFinishing || imdbId == null) return@runOnUiThread
+                    startActivity(Intent(this, MovieDetailActivity::class.java).apply {
+                        putExtra("imdbId", imdbId); putExtra("name", sg.name)
+                        putExtra("poster", sg.poster); putExtra("year", sg.year)
+                        putExtra("background", sg.background)
+                    })
+                }
+            }.start()
+            return
+        }
+        openSeries(seriesById[p.id] ?: Api.Series(p.id, p.name, p.poster, null, p.image))
+    }
+
+    /**
      * The two household rows.
      *
      * Both are network-backed and both are allowed to come back empty, so
@@ -1181,7 +1263,13 @@ class SeriesActivity : Activity() {
 
         // debounce the backdrop so fast scrolling doesn't thrash the network
         pendingBackdrop?.let { handler.removeCallbacks(it) }
-        val r = Runnable { Ui.loadBackdrop(backdrop, bg) }
+        val r = Runnable {
+            Ui.loadBackdrop(backdrop, bg) { key, d ->
+                // take the colour off the artwork and wash it under the
+                // billboard, so the screen answers to whatever is on it
+                Hue.washTo(hueWash, Hue.of(key, d))
+            }
+        }
         pendingBackdrop = r
         handler.postDelayed(r, 160)
     }

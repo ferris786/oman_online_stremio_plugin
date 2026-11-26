@@ -111,6 +111,23 @@
                 android:textColor="@color/btn_primary_text"
                 android:textSize="15sp"
                 android:textStyle="bold" />
+
+            <!-- the strip shows four or five; this shows about fifty -->
+            <TextView
+                android:id="@+id/btnAllEpisodes"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/btn_primary"
+                android:focusable="true"
+                android:clickable="true"
+                android:paddingStart="18dp" android:paddingEnd="18dp"
+                android:paddingTop="10dp" android:paddingBottom="10dp"
+                android:singleLine="true"
+                android:text="⊞  All episodes"
+                android:textColor="@color/btn_primary_text"
+                android:textSize="15sp"
+                android:textStyle="bold" />
         </LinearLayout>
 
         <LinearLayout

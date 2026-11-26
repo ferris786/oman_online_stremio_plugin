@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Going back: the page shrinks towards where it came from. -->
+<set xmlns:android="http://schemas.android.com/apk/res/android">
+    <alpha android:fromAlpha="1.0" android:toAlpha="0.0" android:duration="180"
+        android:interpolator="@android:interpolator/decelerate_quad" />
+    <scale android:fromXScale="1.0" android:toXScale="0.96"
+        android:fromYScale="1.0" android:toYScale="0.96"
+        android:pivotX="50%p" android:pivotY="50%p"
+        android:duration="220" android:interpolator="@android:interpolator/decelerate_quad" />
+</set>

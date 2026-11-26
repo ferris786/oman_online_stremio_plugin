@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- remembers the colour a view has been washed to, so the next
+         cross-fade starts from where the last one finished -->
+    <item name="hue_tag" type="id" />
+</resources>

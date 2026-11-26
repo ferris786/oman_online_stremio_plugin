@@ -67,14 +67,25 @@ object Ui {
         Coil.imageLoader(ctx).enqueue(req)
     }
 
-    /** Full-bleed backdrop with a slow crossfade (no rounding, no placeholder flash). */
-    fun loadBackdrop(target: ImageView, url: String?) {
+    /**
+     * Full-bleed backdrop with a slow crossfade (no rounding, no
+     * placeholder flash).
+     *
+     * @param onLoaded handed the finished drawable, so the caller can take
+     *        a colour off the artwork without decoding it a second time
+     */
+    fun loadBackdrop(target: ImageView, url: String?,
+                     onLoaded: ((String, android.graphics.drawable.Drawable) -> Unit)? = null) {
         if (url.isNullOrEmpty()) return
         if (target.tag == url) return
         target.tag = url
         val ctx = target.context
         Coil.imageLoader(ctx).enqueue(
-            ImageRequest.Builder(ctx).data(url).crossfade(450).target(target).build())
+            ImageRequest.Builder(ctx).data(url).crossfade(450).target(target)
+                .listener(onSuccess = { _, result ->
+                    onLoaded?.invoke(url, result.drawable)
+                })
+                .build())
     }
 
     /** days since a yyyy-mm-dd date (negative = in the future); null when unparsable */
